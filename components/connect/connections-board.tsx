@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ConsentDialog } from "./consent-dialog";
+import { connectGoogleCalendar } from "./google-calendar";
 
 export function ConnectionsBoard({ connected }: { connected: Record<string, string> }) {
   const [target, setTarget] = useState<Integration | null>(null);
@@ -21,12 +22,14 @@ export function ConnectionsBoard({ connected }: { connected: Record<string, stri
       <span className="grid size-9 shrink-0 place-items-center rounded-lg text-sm font-bold text-white" style={{ background: i.color }}>{i.name[0]}</span>
       <div className="min-w-0 flex-1">
         <div className="font-medium">{i.name}</div>
-        <div className="truncate text-xs text-muted-foreground">{connected[i.id] ? `Connected · ${i.scopes[0]}` : i.cat}</div>
+        <div className="truncate text-xs text-muted-foreground">{connected[i.id] ? `Connected · ${i.scopes[0]}` : i.id === "google-calendar" ? "Real Google sign-in · read-only" : i.cat}</div>
       </div>
       {connected[i.id] ? (
         <Button size="sm" variant="ghost" onClick={async () => { await setWorkspaceConnection(i.id, false); toast(`${i.name} disconnected`); }}>Disconnect</Button>
       ) : (
-        <Button size="sm" variant="outline" onClick={() => setTarget(i)}>Connect</Button>
+        <Button size="sm" variant="outline" onClick={async () => {
+          if (i.id === "google-calendar") { const err = await connectGoogleCalendar("/connections"); if (err) toast.error(err); } else setTarget(i);
+        }}>Connect</Button>
       )}
     </div>
   );

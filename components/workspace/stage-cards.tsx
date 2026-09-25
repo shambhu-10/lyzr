@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConsentDialog } from "@/components/connect/consent-dialog";
+import { connectGoogleCalendar } from "@/components/connect/google-calendar";
 import { integrationById, type Integration } from "@/lib/integrations";
 import type { BuildStep, Check as TestCheck } from "@/lib/script/build";
 import type { Mode, Plan, Project } from "@/lib/types";
@@ -24,8 +25,8 @@ function Card({ title, icon, children, tone }: { title: string; icon: React.Reac
 
 /* ---------------- Connect ---------------- */
 
-export function ConnectCard({ plan, project, onSet, onStart }: {
-  plan: Plan; project: Project; onSet: (id: string, s: "connected" | "sample") => Promise<void>; onStart: () => void;
+export function ConnectCard({ plan, project, onSet, onStart, reusable = [] }: {
+  plan: Plan; project: Project; onSet: (id: string, s: "connected" | "sample") => Promise<void>; onStart: () => void; reusable?: string[];
 }) {
   const [consent, setConsent] = useState<Integration | null>(null);
   const [keyFor, setKeyFor] = useState<string | null>(null);
@@ -50,12 +51,21 @@ export function ConnectCard({ plan, project, onSet, onStart }: {
                       {c.kind === "apikey" ? <KeyRound className="size-3.5" /> : c.name[0]}
                     </span>
                     <div className="min-w-0 flex-1"><div className="text-sm font-medium">{c.name}</div><div className="text-xs text-muted-foreground">{c.why}</div></div>
-                    {s === "connected" && <span className="flex items-center gap-1 text-xs text-success"><Check className="size-3.5" />Connected</span>}
+                    {s === "connected" && <span className="flex items-center gap-1 text-xs text-success"><Check className="size-3.5" />Connected{c.id === "google-calendar" && " · real"}</span>}
                     {s === "sample" && <span className="rounded bg-warning-soft px-1.5 py-0.5 text-[11px]">Sample data</span>}
                   </div>
-                  {!s && (
+                  {!s && reusable.includes(c.id) && (
                     <div className="mt-2 flex gap-2 pl-9">
-                      <Button size="xs" onClick={() => (c.kind === "oauth" && integ ? setConsent(integ) : setKeyFor(c.id))}>{c.kind === "oauth" ? "Connect" : "Add key"}</Button>
+                      <Button size="xs" onClick={async () => { await onSet(c.id, "connected"); toast.success(`Using your connected ${c.name}`); }}><Check /> Use connected account</Button>
+                      <Button size="xs" variant="ghost" onClick={() => onSet(c.id, "sample")}>Use sample data</Button>
+                    </div>
+                  )}
+                  {!s && !reusable.includes(c.id) && (
+                    <div className="mt-2 flex gap-2 pl-9">
+                      <Button size="xs" onClick={async () => {
+                        if (c.id === "google-calendar") { const err = await connectGoogleCalendar(`/p/${project.id}`, project.id); if (err) toast.error(err); return; }
+                        if (c.kind === "oauth" && integ) setConsent(integ); else setKeyFor(c.id);
+                      }}>{c.kind === "oauth" ? "Connect" : "Add key"}</Button>
                       <Button size="xs" variant="ghost" onClick={() => onSet(c.id, "sample")}>Use sample data for now</Button>
                     </div>
                   )}
@@ -88,7 +98,7 @@ export function ConnectCard({ plan, project, onSet, onStart }: {
 
 /* ---------------- Build ---------------- */
 
-export function BuildCard({ steps, at, mode, paused, onPause, remaining }: { steps: BuildStep[]; at: number; mode: Mode; paused: boolean; onPause: () => void; remaining: number }) {
+export function BuildCard({ steps, at, mode, paused, onPause, remaining, waitingForAI }: { steps: BuildStep[]; at: number; mode: Mode; paused: boolean; onPause: () => void; remaining: number; waitingForAI?: boolean }) {
   const pct = Math.round((Math.min(at, steps.length) / steps.length) * 100);
   const done = at >= steps.length;
   if (mode === "developer")
@@ -116,7 +126,7 @@ export function BuildCard({ steps, at, mode, paused, onPause, remaining }: { ste
   return (
     <Card title={done ? "Your app is built" : "Building your app"} icon={done ? <Check className="size-3.5 text-success" /> : <Loader2 className="size-3.5 animate-spin text-brand" />}>
       <div className="mb-3">
-        <div className="flex justify-between text-xs text-muted-foreground"><span>Step {Math.min(at + 1, steps.length)} of {steps.length}</span><span>{done ? "Done" : `about ${remaining}s left`}</span></div>
+        <div className="flex justify-between text-xs text-muted-foreground"><span>Step {Math.min(at + 1, steps.length)} of {steps.length}</span><span>{done ? "Done" : waitingForAI ? "AI is designing your screens…" : `about ${remaining}s left`}</span></div>
         <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-brand transition-all duration-500" style={{ width: `${pct}%` }} /></div>
       </div>
       <ul className="space-y-1.5 text-sm">
@@ -127,7 +137,7 @@ export function BuildCard({ steps, at, mode, paused, onPause, remaining }: { ste
           </li>
         ))}
       </ul>
-      {!done && <p className="mt-3 text-[11px] text-muted-foreground">You can leave this page — we&apos;ll email you when it&apos;s ready. (Prototype: build is simulated at high speed.)</p>}
+      {!done && <p className="mt-3 text-[11px] text-muted-foreground">You can switch tabs — we&apos;ll notify you when it&apos;s ready. Screens are designed live by AI; the rest of the pipeline is simulated in this prototype.</p>}
     </Card>
   );
 }

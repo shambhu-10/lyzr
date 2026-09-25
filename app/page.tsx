@@ -3,6 +3,7 @@ import { ArrowRight, Check, Code2, GitBranch, Plug, ShieldCheck, Sparkles, Walle
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { HeroPrompt } from "@/components/landing/hero-prompt";
+import { LiveDemo } from "@/components/landing/live-demo";
 
 const STEPS = [
   { n: "01", t: "Plan", d: "Architect asks the right questions, then writes a plan you can read — with what's in, what's later, and what it will cost." },
@@ -45,6 +46,13 @@ export default function Landing() {
           Turn an idea into a working agentic app — planned with you, connected to your real tools, and shipped to a live URL. Switch to the code whenever you want.
         </p>
         <div className="mt-10"><HeroPrompt /></div>
+      </section>
+
+      <section className="px-5 pb-24">
+        <div className="mx-auto max-w-5xl">
+          <p className="mb-4 text-center text-sm text-muted-foreground">This is the real app renderer — click a meeting, then flip to Developer to see the generated code.</p>
+          <LiveDemo />
+        </div>
       </section>
 
       <section id="lenses" className="border-y bg-card/50 px-5 py-24">

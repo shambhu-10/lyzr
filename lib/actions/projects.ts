@@ -18,10 +18,11 @@ export async function createProject(form: FormData) {
   if (!prompt) return;
   const kind = form.get("kind") === "agent" ? "agent" : "app";
   const framework = String(form.get("framework") ?? "lyzr");
+  const template = form.get("template") === "1"; // templates skip the questions and go straight to a plan
   const name = draftName(prompt);
   const { data, error } = await supabase
     .from("projects")
-    .insert({ name, prompt, kind, slug: `${slugify(name)}-${crypto.randomUUID().slice(0, 4)}`, source: { framework } })
+    .insert({ name, prompt, kind, slug: `${slugify(name)}-${crypto.randomUUID().slice(0, 4)}`, source: { framework, template } })
     .select("id")
     .single();
   if (error) throw error;
@@ -39,4 +40,10 @@ export async function deleteProject(id: string) {
   const { supabase } = await requireUser();
   await supabase.from("projects").delete().eq("id", id);
   revalidatePath("/projects");
+}
+
+export async function listProjectsLite() {
+  const { supabase } = await requireUser();
+  const { data } = await supabase.from("projects").select("id, name, stage").order("updated_at", { ascending: false }).limit(20);
+  return (data ?? []) as { id: string; name: string; stage: string }[];
 }

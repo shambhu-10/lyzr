@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/shell/sidebar";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { balance } from "@/lib/usage";
+import { CommandPalette } from "@/components/shell/command-palette";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const { supabase, user, profile } = await requireUser();
@@ -16,6 +17,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         <MobileNav />
         {children}
       </div>
+      <CommandPalette />
     </div>
   );
 }

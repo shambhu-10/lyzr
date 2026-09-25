@@ -4,6 +4,8 @@ import { requireUser } from "@/lib/supabase/server";
 import { Composer } from "@/components/home/composer";
 import { ProjectCard } from "@/components/projects/project-card";
 import { roleById } from "@/lib/roles";
+import { UsePromptButton } from "@/components/explore/use-prompt-button";
+import { TEMPLATES } from "@/lib/explore";
 import type { Project } from "@/lib/types";
 
 export default async function HomePage() {
@@ -28,8 +30,12 @@ export default async function HomePage() {
         {projects.length ? (
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{projects.map((p) => <ProjectCard key={p.id} p={p} />)}</div>
         ) : (
-          <div className="mt-4 rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-            Your projects will show up here. Describe an idea above, or <Link href="/explore" className="text-foreground underline underline-offset-4">start from a template</Link>.
+          <div className="mt-4 flex flex-col items-center gap-3 rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+            <p>Your projects will show up here. New to Architect? Open a ready-made sample and click around — nothing to set up.</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              <UsePromptButton prompt={TEMPLATES[1].prompt} label="Try the sample project (Briefly)" variant="default" />
+              <Link href="/explore" className="inline-flex h-7 items-center rounded-lg border px-2.5 text-[0.8rem] text-foreground hover:bg-muted">Browse templates</Link>
+            </div>
           </div>
         )}
       </section>

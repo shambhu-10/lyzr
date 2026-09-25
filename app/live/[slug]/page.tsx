@@ -20,7 +20,7 @@ export default async function LiveApp({ params }: PageProps<"/live/[slug]">) {
   if (!row) notFound();
   return (
     <div className="flex min-h-screen flex-col bg-[#F4F2EC]">
-      <div className="flex flex-1 flex-col p-0 sm:p-4 [&>div]:flex-1"><AppPreview plan={row.plan} revealed={row.plan.screens.length} demo={row.demo_data} /></div>
+      <div className="flex flex-1 flex-col p-0 sm:p-4 [&>div]:flex-1"><AppPreview plan={row.plan} revealed={row.plan.screens.length} demo={row.demo_data} slug={slug} /></div>
       <Link href="/" className="mx-auto mb-3 rounded-full bg-black/80 px-3 py-1 text-[11px] text-white">Built with Architect</Link>
     </div>
   );

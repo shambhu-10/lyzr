@@ -40,6 +40,10 @@ export function Sidebar({ name, email, org, credits }: { name: string; email: st
       <Link href="/home" className="mt-3 flex items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90">
         <Plus className="size-4" /> New project
       </Link>
+      <button onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
+        className="mt-2 flex items-center justify-between rounded-lg border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground">
+        Search or jump to… <kbd className="rounded border px-1 font-mono text-[10px]">⌘K</kbd>
+      </button>
       <nav className="mt-4 space-y-0.5" aria-label="Main">{MAIN.map(item)}</nav>
       <div className="mt-auto space-y-0.5">
         {FOOT.map(item)}

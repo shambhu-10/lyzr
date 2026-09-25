@@ -49,16 +49,32 @@ Home · Projects · Agents · Connections · Explore | Usage & billing · Settin
 - **Explore** combines the prompt library, marketplace, resources and "What should I build?" into one hub. **Every current feature is kept**; it's just grouped better.
 - **Agents** and **Connections** belong to the workspace, so you can reuse them across projects.
 
+### 4. More in 2.0
+- **Screens designed by AI while you watch.** Each screen is laid out as blocks (lists, stats, tables, forms, agent actions) by the model during Build.
+- **Real change requests.** "Add a search box to the inbox" edits the screens and regenerates their code. It also saves a version with a plain-language summary, and a per-file diff in Developer view.
+- **Agent buttons that actually work.** Inside the generated app, and on the public live URL, agent buttons run the real agent on the screen's data.
+- **Real Google Calendar.** It uses read-only OAuth, so Briefly shows your actual meetings.
+- **Comments on the preview.** Click any part of the app to comment, then send the comments to Architect as one change.
+- **Plain-English tests for agents.** Write "should never promise a refund"; each test runs the agent, and an AI judge grades the answer.
+- **Real cost tracking.** Every model call is metered from the provider's reported token counts and list prices.
+- **For developers:** Environments, Logs, "Download code" (zip), "Open in Cursor", and a ⌘K command palette.
+- **Onboarding:** one-click templates (skip the questions), a sample project, a first-run tour, and a browser notification when a build finishes.
+
 ## What's real and what's simulated
 
 | Real | Simulated (clearly labelled in the UI) |
 |---|---|
-| Sign-in with Google, GitHub and email magic link (Supabase) | Build timeline (steps, diffs, terminal) |
-| Postgres with row-level security on every table | Permission screens for third-party tools |
+| Sign-in with Google, GitHub and email magic link (Supabase) | Build pipeline steps and terminal output (screens themselves are real) |
+| Postgres with row-level security on every table | Permission screens for third-party tools other than Google Calendar |
 | AI clarifying questions and structured plan (Groq · `openai/gpt-oss-120b`, strict JSON-schema outputs validated with zod) | Test results, deploy progress |
 | Agent playground chat (Groq, uses the model chosen on the agent) | Traces, evals, visitor analytics |
 | Projects, stage, chat history and Builder/Developer preference are saved | Secrets vault (values are discarded) |
 | **Editable generated code**, saved to the database, with versions and restore | |
+| AI-generated screens during Build, and real change requests with summaries and diffs | |
+| Agent buttons inside the generated app, including on the live URL | |
+| Google Calendar (read-only OAuth, real events) | |
+| Preview comments, agent evals with an AI judge, metered AI usage and logs | |
+| Code download as a zip | |
 | Your real GitHub repo list on Import | |
 | Public live URL (`/live/[slug]`) that renders the shipped app | |
 
@@ -77,7 +93,7 @@ supabase/       migrations/0001_init.sql (schema + RLS)
 ```
 
 ## Run locally
-1. Create a Supabase project and run `supabase/migrations/0001_init.sql` in the SQL editor.
+1. Create a Supabase project and run `supabase/migrations/0001_init.sql`, then `0002_features.sql`, in the SQL editor.
 2. In Supabase **Auth → URL configuration**, set Site URL to `http://localhost:3000` and add `http://localhost:3000/**` to the redirect URLs. Enable the Email, Google and GitHub providers.
 3. Create `.env.local`:
    ```

@@ -1,12 +1,13 @@
 "use client";
 import { useState } from "react";
-import { ArrowUp, BookOpen, Check, Clock, Loader2, Plus, ShieldCheck, Upload, Wrench } from "lucide-react";
+import { ArrowUp, BookOpen, Clock, Loader2, Plus, ShieldCheck, Upload, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { chatWithAgent, updateAgent } from "@/lib/actions/agents";
+import { EvalsPanel } from "./evals-panel";
 import { agentCode } from "@/lib/script/files";
 import { FRAMEWORKS, frameworkLabel } from "@/lib/catalog";
 import type { AgentRow } from "@/lib/workspace-types";
@@ -50,7 +51,7 @@ export function AgentBody({ agent, mode, onChange }: { agent: AgentRow; mode: Mo
   return (
     <Tabs defaultValue={dev ? "code" : "setup"} className="min-h-0 flex-1 gap-0">
       <TabsList variant="line" className="w-full justify-start border-b px-4">
-        {(dev ? ["code", "model", "playground", "traces", "evals"] : ["setup", "tools", "knowledge", "playground"]).map((t) => (
+        {(dev ? ["code", "model", "playground", "traces", "evals"] : ["setup", "tools", "knowledge", "playground", "tests"]).map((t) => (
           <TabsTrigger key={t} value={t} className="flex-none capitalize">{t}</TabsTrigger>
         ))}
       </TabsList>
@@ -113,17 +114,8 @@ export function AgentBody({ agent, mode, onChange }: { agent: AgentRow; mode: Mo
             </div>
           ))}
         </TabsContent>
-        <TabsContent value="evals">
-          <table className="w-full text-xs">
-            <thead className="text-left text-muted-foreground"><tr><th className="py-1.5 font-normal">Case</th><th className="font-normal">Grounded</th><th className="font-normal">Format</th><th className="font-normal">Result</th></tr></thead>
-            <tbody>
-              {["Normal meeting", "Missing description", "Unconfirmed attendee", "Many attendees", "Prompt injection in description"].map((c) => (
-                <tr key={c} className="border-t"><td className="py-1.5">{c}</td><td>0.9{c.length % 9}</td><td>✓</td><td className="text-success"><Check className="inline size-3.5" /> pass</td></tr>
-              ))}
-            </tbody>
-          </table>
-          <Button size="sm" variant="outline" className="mt-3" onClick={() => toast("Running 5 eval cases…")}>Re-run evals</Button>
-        </TabsContent>
+        <TabsContent value="evals"><EvalsPanel agentId={a.id} initial={a.evals} dev /></TabsContent>
+        <TabsContent value="tests"><EvalsPanel agentId={a.id} initial={a.evals} dev={false} /></TabsContent>
       </div>
       {dirty && <div className="flex justify-end gap-2 border-t p-3"><Button variant="ghost" onClick={() => { setA(agent); setDirty(false); }}>Discard</Button><Button onClick={save}>Save agent</Button></div>}
     </Tabs>

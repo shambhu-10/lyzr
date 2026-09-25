@@ -6,11 +6,8 @@ import type { Question } from "@/lib/types";
 import { Switch } from "@/components/ui/switch";
 import { LogoMark } from "@/components/logo";
 import { cn } from "@/lib/utils";
+import { RichText } from "@/components/rich-text";
 
-/** Minimal **bold** rendering — enough for assistant messages without a markdown dependency. */
-export function Rich({ text }: { text: string }) {
-  return <>{text.split(/(\*\*[^*]+\*\*)/g).map((p, i) => (p.startsWith("**") ? <b key={i}>{p.slice(2, -2)}</b> : <span key={i}>{p}</span>))}</>;
-}
 
 export function Chat({ messages, busy, busyLabel, placeholder, onSend, onAnswer, planToggle, onPlanToggle, children }: {
   messages: Msg[]; busy: boolean; busyLabel: string; placeholder: string;
@@ -32,9 +29,12 @@ export function Chat({ messages, busy, busyLabel, placeholder, onSend, onAnswer,
             <div key={m.id} className="rise flex gap-2.5">
               <LogoMark className="mt-0.5 size-6 shrink-0" />
               <div className="min-w-0 flex-1 space-y-3 text-sm leading-relaxed">
-                <p><Rich text={m.content} /></p>
+                <RichText text={m.content} />
+                {m.kind === "change" && Array.isArray(m.meta?.changes) && (m.meta.changes as string[]).length > 0 && (
+                  <ul className="space-y-1 rounded-lg border bg-card p-2.5 text-xs">{(m.meta.changes as string[]).map((c) => <li key={c} className="flex gap-2"><Check className="mt-0.5 size-3.5 shrink-0 text-success" />{c}</li>)}</ul>
+                )}
                 {m.kind === "questions" && !answered && <QuestionCard questions={(m.meta?.questions as Question[]) ?? []} onSubmit={onAnswer} disabled={busy} />}
-                {m.meta?.live === false && <p className="text-[11px] text-muted-foreground">Offline demo response — add a Groq API key for live AI.</p>}
+                {m.meta?.live === false && <p className="text-[11px] text-muted-foreground">{m.meta?.failed ? "The AI didn't return a usable answer — please try again." : "Offline demo response — add a Groq API key for live AI."}</p>}
               </div>
             </div>
           ),

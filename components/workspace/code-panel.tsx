@@ -2,7 +2,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useTheme } from "next-themes";
-import { FileCode2, FileText, Folder, Loader2, Lock } from "lucide-react";
+import { Download, FileCode2, FileText, Folder, Loader2, Lock, Terminal } from "lucide-react";
+import { toast } from "sonner";
 import type { FileRow } from "@/lib/workspace-types";
 import { cn } from "@/lib/utils";
 
@@ -10,8 +11,19 @@ const Monaco = dynamic(() => import("@monaco-editor/react"), { ssr: false, loadi
 
 const lang = (p: string) => (p.endsWith(".py") ? "python" : p.endsWith(".sql") ? "sql" : p.endsWith(".md") ? "markdown" : p.endsWith(".ts") || p.endsWith(".tsx") ? "typescript" : "plaintext");
 
-export function CodePanel({ files, locked, terminal, onSave, writing }: {
-  files: FileRow[]; locked: boolean; terminal: string[]; onSave: (path: string, content: string) => Promise<void>; writing?: string;
+/** Real export: the project's current files as a zip — you own the code. */
+async function downloadZip(files: FileRow[], name: string) {
+  const JSZip = (await import("jszip")).default;
+  const zip = new JSZip();
+  files.forEach((f) => zip.file(f.path, f.content));
+  const url = URL.createObjectURL(await zip.generateAsync({ type: "blob" }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: `${name}.zip` });
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export function CodePanel({ files, locked, terminal, onSave, writing, name = "project" }: {
+  files: FileRow[]; locked: boolean; terminal: string[]; onSave: (path: string, content: string) => Promise<void>; writing?: string; name?: string;
 }) {
   const { resolvedTheme } = useTheme();
   const [picked, setOpen] = useState<string>(files[0]?.path ?? "");
@@ -46,7 +58,13 @@ export function CodePanel({ files, locked, terminal, onSave, writing }: {
     return <div className="grid h-full place-items-center text-sm text-muted-foreground">Files appear here as soon as the build starts writing them.</div>;
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[200px_1fr] grid-rows-[1fr_150px] bg-background">
+    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="flex h-9 shrink-0 items-center justify-end gap-2 border-b px-3 text-xs">
+      <button onClick={() => { navigator.clipboard.writeText(`npx @architect/cli pull ${name} && cursor ${name}`); toast("Command copied — run it in your terminal to open this project in Cursor"); }}
+        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-muted-foreground hover:bg-muted hover:text-foreground"><Terminal className="size-3.5" /> Open in Cursor</button>
+      <button disabled={locked} onClick={() => downloadZip(files, name)} className="flex items-center gap-1.5 rounded-md border px-2 py-1 hover:bg-muted disabled:opacity-50"><Download className="size-3.5" /> Download code</button>
+    </div>
+    <div className="grid min-h-0 flex-1 grid-cols-[200px_1fr] grid-rows-[1fr_150px]">
       <aside className="row-span-2 overflow-y-auto border-r py-2 text-xs">
         <div className="px-3 pb-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Files</div>
         {tree.map(([dir, list]) => (
@@ -85,6 +103,7 @@ export function CodePanel({ files, locked, terminal, onSave, writing }: {
         {terminal.length ? terminal.map((l, i) => <div key={i} className={cn(l.includes("✗") && "text-red-300", l.includes("✓") && "text-emerald-300")}>{l}</div>) : <span className="opacity-50">$ _</span>}
         <div ref={termEnd} />
       </div>
+    </div>
     </div>
   );
 }

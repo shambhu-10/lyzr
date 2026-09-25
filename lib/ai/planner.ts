@@ -1,10 +1,12 @@
 import "server-only";
 import { z } from "zod";
-import { structured } from "./llm";
+import { structured, type Usage } from "./llm";
 import { INTEGRATIONS } from "@/lib/integrations";
-import type { Plan, Question } from "@/lib/types";
+import type { Block, Plan, Question, Screen } from "@/lib/types";
 import { estimate } from "./estimate";
+import { fallbackBlocks, fallbackPlan, fallbackQuestions } from "./fallbacks";
 
+/* ---------------- schemas (Groq strict mode: every field required, empty values instead of optional) ---------------- */
 
 const QuestionsSchema = z.object({
   intro: z.string().describe("One or two sentences restating the idea in plain language and what you'll clarify."),
@@ -16,6 +18,28 @@ const QuestionsSchema = z.object({
   })).min(2).max(4),
 });
 
+const BlockSchema = z.object({
+  type: z.enum(["stats", "list", "table", "form", "detail", "text", "agent"]),
+  title: z.string(),
+  body: z.string().describe("text: the paragraph; agent: what the agent will do; otherwise empty"),
+  items: z.array(z.object({ title: z.string(), meta: z.string(), badge: z.string() }))
+    .describe("stats: label/value in title/meta; list: realistic rows; detail: label/value pairs; else empty"),
+  columns: z.array(z.string()).describe("table only"),
+  rows: z.array(z.array(z.string())).describe("table only: realistic rows, same length as columns"),
+  fields: z.array(z.object({ label: z.string(), kind: z.enum(["text", "textarea", "select", "file"]), placeholder: z.string() })).describe("form only"),
+  action: z.string().describe("button label for form/agent blocks, e.g. 'Generate brief'; else empty"),
+  agent: z.string().describe("agent block: exact agent name from the plan; else empty"),
+  source: z.enum(["static", "google-calendar", "selection"]).describe("google-calendar: list of the user's real meetings; selection: shows the item picked on a previous screen; else static"),
+});
+
+const ScreenSchema = z.object({
+  name: z.string(),
+  purpose: z.string(),
+  metrics: z.array(z.object({ label: z.string(), value: z.string() })).describe("0-3 realistic headline numbers; empty if none make sense"),
+  rows: z.array(z.object({ title: z.string(), meta: z.string() })).describe("3-4 realistic sample items; empty for forms"),
+  action: z.string().describe("Label of the main button on this screen"),
+});
+
 const PlanSchema = z.object({
   name: z.string().describe("Short memorable product name, 1-2 words"),
   tagline: z.string(),
@@ -25,13 +49,7 @@ const PlanSchema = z.object({
     status: z.enum(["in", "later"]),
     reason: z.string().describe("Why it is in v1 or deferred; empty string if in"),
   })).describe("EVERY capability the user asked for or chose, each marked in v1 or later. Never silently drop a request."),
-  screens: z.array(z.object({
-    name: z.string(),
-    purpose: z.string(),
-    metrics: z.array(z.object({ label: z.string(), value: z.string() })).describe("0-3 realistic headline numbers for this screen; empty if none make sense (e.g. a login screen)"),
-    rows: z.array(z.object({ title: z.string(), meta: z.string() })).describe("3-4 realistic sample items this screen would list, e.g. an email subject + sender; empty for forms"),
-    action: z.string().describe("Label of the main button on this screen, e.g. 'Generate reply'"),
-  })).min(2).max(5).describe("The main app screens. Skip login/sign-up — Architect adds authentication automatically."),
+  screens: z.array(ScreenSchema).min(2).max(5).describe("The main app screens. Skip login/sign-up — Architect adds authentication automatically."),
   agents: z.array(z.object({ name: z.string(), role: z.string(), tools: z.array(z.string()) })).min(1).max(4),
   data: z.array(z.string()).describe("What the app stores, plain language; empty if nothing"),
   connections: z.array(z.object({
@@ -39,7 +57,15 @@ const PlanSchema = z.object({
     name: z.string(),
     why: z.string().describe("Plain-language reason, e.g. 'to read your upcoming meetings'"),
     kind: z.enum(["oauth", "apikey"]),
-  })).describe("Every EXTERNAL account or key the app needs to work on real data. Not the database, auth, hosting or AI model — Architect provides those."),
+  })).describe("Every EXTERNAL account or key the v1 features (status \"in\") need to work on real data — none for deferred items. Not the database, auth, hosting or AI model — Architect provides those."),
+});
+
+const ScreenUISchema = z.object({ blocks: z.array(BlockSchema).min(2).max(5) });
+
+const ChangeSchema = z.object({
+  summary: z.string().describe("One plain-language sentence a non-technical user understands, e.g. 'Made the brief shorter and added a copy button'"),
+  changes: z.array(z.string()).describe("2-5 short bullets of what changed, naming screens, in plain words a non-technical user understands — never mention blocks, fields, meta or JSON"),
+  screens: z.array(ScreenSchema.extend({ blocks: z.array(BlockSchema) })).describe("The full, updated list of screens with their blocks"),
 });
 
 const SYSTEM = `You are Architect, a product planner inside a platform that builds agentic web apps (Next.js UI + AI agents).
@@ -48,84 +74,49 @@ You design small, shippable v1s — but you are transparent: anything the user a
 Identify every connection the app needs to work on real data (calendars, email, CRMs, API keys) so the user can connect them BEFORE building.
 Architect itself provides the database, user sign-in, hosting and the AI model — never list those as connections.`;
 
-const ask = <T extends z.ZodType>(schema: T, effort: "low" | "medium", user: string) => structured(schema, "plan_step", SYSTEM, user, effort);
+const UI_SYSTEM = `You design screens for a web app as a short list of UI blocks. Use realistic, specific sample data (real-sounding names, numbers, dates) — never "Item 1" or lorem ipsum.
+Rules: 2-5 blocks per screen. Put an "agent" block wherever an AI agent does work, with "agent" set to the exact agent name and "action" as the button label.
+If the app connects Google Calendar and a screen lists meetings, use a "list" block with source "google-calendar" (still include 3-4 sample meetings as items).
+A screen that works on something picked earlier (e.g. a selected meeting or email) should start with a "detail" block with source "selection".
+Agents never send, post or delete on their own — label agent buttons with drafting verbs ("Draft reply", "Generate brief"), never "Send".
+Keep titles short. Unused fields must be empty strings or empty arrays.`;
 
-export async function clarify(prompt: string): Promise<{ intro: string; questions: Question[]; live: boolean }> {
-  const out = await ask(QuestionsSchema, "low", `The user wants to build:\n"""${prompt}"""\n\nAsk 2-4 multiple-choice clarifying questions that most change what gets built (e.g. which tools/ecosystem, which features in v1, whether to save data, who uses it). Recommended option first.`);
-  return out ? { ...out, live: true } : { ...fallbackQuestions(prompt), live: false };
+/* ---------------- public API ---------------- */
+
+export type Step<T> = T & { live: boolean; usage: Usage[] };
+
+export async function clarify(prompt: string): Promise<Step<{ intro: string; questions: Question[] }>> {
+  const r = await structured(QuestionsSchema, "clarify", SYSTEM, `The user wants to build:\n"""${prompt}"""\n\nAsk 2-4 multiple-choice clarifying questions that most change what gets built (e.g. which tools/ecosystem, which features in v1, whether to save data, who uses it). Recommended option first.`, "low");
+  return r ? { ...r.data, live: true, usage: [r.usage] } : { ...fallbackQuestions(prompt), live: false, usage: [] };
 }
 
-export async function makePlan(prompt: string, answers: string, current?: Plan | null, instruction?: string): Promise<Plan & { live: boolean }> {
+export async function makePlan(prompt: string, answers: string, current?: Plan | null, instruction?: string): Promise<Step<Plan>> {
   const user = [
     `Original request:\n"""${prompt}"""`,
     answers && `User's answers to clarifying questions:\n${answers}`,
-    current && `Current plan (JSON):\n${JSON.stringify(current)}`,
+    current && `Current plan (JSON):\n${JSON.stringify({ ...current, screens: current.screens.map((s) => ({ name: s.name, purpose: s.purpose, metrics: s.metrics ?? [], rows: s.rows ?? [], action: s.action ?? "" })) })}`,
     instruction && `Revise the plan according to this instruction from the user: "${instruction}"`,
     "Write the v1 plan.",
   ].filter(Boolean).join("\n\n");
-  const out = await ask(PlanSchema, "medium", user);
-  const plan = out ?? fallbackPlan(prompt, current, instruction);
-  return { ...plan, estimate: estimate(plan), live: !!out };
+  const r = await structured(PlanSchema, "plan", SYSTEM, user, "medium");
+  const plan = r?.data ?? fallbackPlan(prompt, current, instruction);
+  return { ...plan, estimate: estimate(plan), live: !!r, usage: r ? [r.usage] : [] };
 }
 
-/* ---------- offline fallbacks: the demo never dead-ends if the API is unavailable ---------- */
-
-const isMeeting = (p: string) => /meeting|calendar|brief/i.test(p);
-
-function fallbackQuestions(prompt: string) {
-  if (isMeeting(prompt))
-    return {
-      intro: "A meeting assistant can combine your calendar, quick research and transcript-based follow-ups — with every email kept as a draft for your approval.",
-      questions: [
-        { id: "eco", text: "Which calendar and email should it use?", multi: false, options: [{ label: "Google Workspace", hint: "Google Calendar + Gmail drafts" }, { label: "Microsoft 365", hint: "Outlook calendar + drafts" }] },
-        { id: "features", text: "What should v1 include?", multi: true, options: [{ label: "Meeting briefs", hint: "Agenda, attendees, context" }, { label: "Attendee research", hint: "Recent company & people news" }, { label: "Transcript follow-ups", hint: "Recap + action items + email draft" }] },
-        { id: "data", text: "Should it remember past meetings?", multi: false, options: [{ label: "Yes, keep a history", hint: "Briefs and follow-ups saved" }, { label: "No, nothing stored", hint: "Each run is fresh" }] },
-      ],
-    };
-  return {
-    intro: "Here's how I understand your idea. A few quick choices will shape what I build first.",
-    questions: [
-      { id: "users", text: "Who will use it?", multi: false, options: [{ label: "Just me", hint: "Personal tool" }, { label: "My team", hint: "Shared workspace with sign-in" }, { label: "Customers", hint: "Public-facing app" }] },
-      { id: "ai", text: "What should the AI agent do?", multi: true, options: [{ label: "Analyse and summarise", hint: "Reads inputs, produces insights" }, { label: "Take actions", hint: "Updates tools — with your approval" }, { label: "Answer questions", hint: "Chat over your data" }] },
-      { id: "data", text: "Should it save data between sessions?", multi: false, options: [{ label: "Yes", hint: "Records and history" }, { label: "No", hint: "Nothing stored" }] },
-    ],
-  };
+/** Real "UI getting built": the model lays out one screen as blocks. */
+export async function generateScreen(plan: Plan, i: number): Promise<Step<{ blocks: Block[] }>> {
+  const { screens, ...rest } = plan;
+  const r = await structured(ScreenUISchema, "screen", UI_SYSTEM,
+    `App plan:\n${JSON.stringify({ ...rest, screens: screens.map((s) => ({ name: s.name, purpose: s.purpose })) })}\n\nDesign the screen "${screens[i].name}" — ${screens[i].purpose}.`, "low");
+  return r ? { blocks: r.data.blocks, live: true, usage: [r.usage] } : { blocks: fallbackBlocks(plan, i), live: false, usage: [] };
 }
 
-function fallbackPlan(prompt: string, current?: Plan | null, instruction?: string): Omit<Plan, "estimate"> {
-  if (current) {
-    const add = instruction?.replace(/^add back:?\s*/i, "") ?? "";
-    return { ...current, scope: current.scope.map((s) => (add && s.item.toLowerCase() === add.toLowerCase() ? { ...s, status: "in", reason: "" } : s)) };
-  }
-  if (isMeeting(prompt))
-    return {
-      name: "Briefly",
-      tagline: "Walk into every meeting prepared.",
-      summary: "Briefly reads your upcoming Google Calendar events and writes a one-page brief for any meeting you pick — who's attending, why it matters, and what to ask. Follow-up emails are always drafts you approve.",
-      scope: [
-        { item: "Meeting briefs from your calendar", status: "in", reason: "" },
-        { item: "Focus notes (e.g. “budget risks”)", status: "in", reason: "" },
-        { item: "Attendee & company research", status: "later", reason: "Needs a web-search connection; easy to add next." },
-        { item: "Follow-up emails from transcripts", status: "later", reason: "Needs Gmail drafts + transcript upload; planned for v2." },
-      ],
-      screens: [
-        { name: "Agenda", purpose: "Today's and upcoming meetings in order" },
-        { name: "Meeting context", purpose: "Verify event details and add a focus" },
-        { name: "Brief", purpose: "The generated one-page brief, copyable by section" },
-      ],
-      agents: [{ name: "Meeting Brief Agent", role: "Turns a calendar event and your focus into a grounded brief", tools: ["Google Calendar"] }],
-      data: [],
-      connections: [{ id: "google-calendar", name: "Google Calendar", why: "to read your upcoming meetings (read-only)", kind: "oauth" }],
-    };
-  const title = prompt.split(/\s+/).slice(0, 3).join(" ");
-  return {
-    name: title.charAt(0).toUpperCase() + title.slice(1),
-    tagline: "Your idea, as a working app.",
-    summary: `A focused first version of: ${prompt}`,
-    scope: [{ item: "Core workflow from your description", status: "in", reason: "" }, { item: "Team sharing & roles", status: "later", reason: "Add once the core flow is validated." }],
-    screens: [{ name: "Dashboard", purpose: "Overview of everything in one place" }, { name: "Workspace", purpose: "Where the main task happens" }, { name: "Results", purpose: "Outputs from the AI agent" }],
-    agents: [{ name: "Assistant Agent", role: "Does the core reasoning task described in your prompt", tools: [] }],
-    data: ["Your records and results"],
-    connections: [],
-  };
+/** Real post-build iteration: apply a change request to the app's screens and explain what changed. */
+export async function changeApp(plan: Plan, instruction: string): Promise<Step<{ summary: string; changes: string[]; screens: Screen[] }>> {
+  const r = await structured(ChangeSchema, "change", `${UI_SYSTEM}\nYou are editing an existing app. Change only what the request needs; keep everything else identical.`,
+    `Current app (JSON):\n${JSON.stringify({ name: plan.name, agents: plan.agents, connections: plan.connections, screens: plan.screens })}\n\nChange request: "${instruction}"`, "medium");
+  if (r) return { ...r.data, live: true, usage: [r.usage] };
+  return { summary: "I couldn't apply that change right now — your app is unchanged.", changes: [], screens: plan.screens, live: false, usage: [] };
 }
+
+export { fallbackBlocks } from "./fallbacks";
