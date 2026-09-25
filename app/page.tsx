@@ -6,7 +6,9 @@ import { HeroPrompt } from "@/components/landing/hero-prompt";
 import { LiveDemo } from "@/components/landing/live-demo";
 import { ShowcaseCard } from "@/components/community/showcase-card";
 import { getShowcase } from "@/lib/showcase";
-import { INTEGRATIONS } from "@/lib/integrations";
+import { LogoStrip } from "@/components/landing/logo-strip";
+import { HeroTitle } from "@/components/landing/hero-title";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export const revalidate = 60; // gallery counts refresh at most once a minute; the page stays static
 
@@ -24,7 +26,6 @@ const FRAMEWORKS = ["Lyzr", "LangGraph", "CrewAI", "OpenAI Agents SDK", "Google 
 
 export default async function Landing() {
   const apps = await getShowcase(6);
-  const remixes = apps.reduce((a, x) => a + x.remixes, 0);
 
   return (
     <div className="min-h-screen overflow-x-clip">
@@ -40,41 +41,25 @@ export default async function Landing() {
           <div className="flex items-center gap-2">
             <Button variant="ghost" asChild><Link href="/login">Sign in</Link></Button>
             <Button asChild><Link href="/login">Start building</Link></Button>
+            <ThemeToggle />
           </div>
         </div>
       </header>
 
-      <section className="relative px-5 pt-20 pb-20 text-center md:pt-28">
+      <section className="relative flex min-h-[calc(100svh-4rem)] flex-col items-center justify-center px-5 py-16 text-center">
         <div className="mesh pointer-events-none absolute inset-0 -z-10" />
         <div className="grid-lines pointer-events-none absolute inset-x-0 top-0 -z-10 h-[560px] opacity-60" />
-        <a href={apps.length ? "#showcase" : "#features"} className="rise-1 mx-auto mb-7 inline-flex items-center gap-2 rounded-full border bg-card/80 py-1 pr-3 pl-1 text-xs text-muted-foreground shadow-[var(--shadow-soft)] backdrop-blur hover:text-foreground">
-          <span className="rounded-full bg-spark-soft px-2 py-0.5 font-medium text-spark">New</span>
-          Architect 2.0 — for builders <em>and</em> developers <ArrowRight className="size-3" />
-        </a>
-        <h1 className="rise-2 mx-auto max-w-4xl text-5xl leading-[1.02] font-semibold tracking-tight md:text-7xl">
-          Describe it. Build it. <span className="font-display font-normal whitespace-nowrap italic text-brand">Own it.</span>
-        </h1>
-        <p className="rise-3 mx-auto mt-6 max-w-xl text-lg text-muted-foreground">
-          Turn an idea into a working agentic app — planned with you, connected to your real tools, and shipped to a live URL. Switch to the code whenever you want.
+        <HeroTitle />
+        <p className="rise-2 mx-auto mt-5 text-base tracking-tight text-foreground/80 md:text-lg">
+          Describe it. Build it. <span className="font-display text-[1.12em] text-brand italic">Own it.</span>
         </p>
-        <div className="rise-4 mt-10"><HeroPrompt /></div>
-        {apps.length > 0 && (
-          <p className="rise-4 mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <span className="flex -space-x-1.5">{apps.slice(0, 4).map((a) => <span key={a.slug} className="grid size-6 place-items-center rounded-full border-2 border-background bg-brand-soft text-[10px] font-semibold text-brand">{(a.author ?? a.name)[0]}</span>)}</span>
-            <span><b className="font-medium text-foreground">{apps.length} live apps</b> in the community gallery{remixes > 0 && <> · {remixes} remixes</>}</span>
-          </p>
-        )}
+        <p className="rise-2 mx-auto mt-1.5 text-xs text-muted-foreground md:text-sm">
+          The agent builder for builders <span className="font-display text-[1.08em] italic">and</span> developers
+        </p>
+        <div className="rise-3 mt-8 w-full"><HeroPrompt /></div>
+        <div className="rise-4 mt-6 w-full"><LogoStrip /></div>
       </section>
 
-      <div className="border-y bg-card/40 py-4" aria-label="Works with">
-        <div className="relative mx-auto max-w-6xl overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)]">
-          <div className="marquee flex w-max gap-10 text-sm text-muted-foreground">
-            {[...INTEGRATIONS, ...INTEGRATIONS].map((i, k) => (
-              <span key={k} className="flex items-center gap-2 whitespace-nowrap"><span className="size-2 rounded-full" style={{ background: i.color }} />{i.name}</span>
-            ))}
-          </div>
-        </div>
-      </div>
 
       <section className="px-5 py-24">
         <div className="reveal mx-auto max-w-5xl">

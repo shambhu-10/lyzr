@@ -199,9 +199,41 @@
 @supports (animation-timeline: view()) {
   .reveal { animation: reveal linear both; animation-timeline: view(); animation-range: entry 0% cover 22%; }
 }
-@keyframes marquee { to { transform: translateX(-50%) } }
-.marquee { animation: marquee 40s linear infinite; }
-.marquee:hover { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
-  .rise, .rise-1, .rise-2, .rise-3, .rise-4, .reveal, .marquee, .shimmer { animation: none !important; }
+  .rise, .rise-1, .rise-2, .rise-3, .rise-4, .reveal, .shimmer { animation: none !important; }
+}
+
+/* Skywrite intro (components/landing/skywrite-hero.tsx) */
+.sw-two { opacity: 0; transform: translateY(.1em); filter: blur(8px); transition: opacity 1s ease .15s, transform 1s cubic-bezier(.2,.8,.2,1) .15s, filter 1s ease .15s; }
+.sw-two[data-on="true"] { opacity: 1; transform: none; filter: none; }
+.sw-jet { offset-anchor: center; offset-rotate: auto; }
+.sw-trail { fill: none; stroke: color-mix(in oklab, var(--foreground) 32%, transparent); stroke-linecap: round; stroke-linejoin: round; }
+.sw-smoke { transition: opacity 1.2s ease, transform 1.2s ease, filter 1.2s ease; }
+.sw-smoke.sw-gone { opacity: 0; transform: translateY(-8px); filter: url(#sw-smoke) blur(6px); }
+@media (prefers-reduced-motion: reduce) { .sw-two { transition: none; } }
+
+/* Hero title: Leonardo's machine on the A (components/landing/hero-title.tsx + ornithopter.tsx) */
+.ph-two { display: inline-block; opacity: 0; transform: translateY(.18em); filter: blur(10px); transition: opacity .8s ease, transform .8s cubic-bezier(.2,.8,.2,1), filter .8s ease; }
+.ph-two[data-on="true"] { opacity: 1; transform: none; filter: none; }
+.ph-machine { opacity: 0; transition: opacity .6s ease; }
+.ph-machine[data-ready="true"] { opacity: 1; }
+/* cutout wings pivot at their shoulders (drawing coordinates) */
+.ph-wing-far { transform-box: view-box; transform-origin: 860px 590px; }
+.ph-wing-near { transform-box: view-box; transform-origin: 1000px 630px; }
+.ph-machine[data-ready="true"] .ph-wing-far { animation: ph-rest-far 6s ease-in-out 2s infinite; }
+.ph-machine[data-ready="true"] .ph-wing-near { animation: ph-rest-near 6s ease-in-out 2s infinite; }
+/* a burst of wing-beats (a/b alternate so a click restarts it), then back to the occasional resting flap */
+.ph-machine[data-flap="a"] .ph-wing-far { animation: ph-beat-far-a 1.5s ease-in-out, ph-rest-far 6s ease-in-out 1.5s infinite; }
+.ph-machine[data-flap="a"] .ph-wing-near { animation: ph-beat-near-a 1.5s ease-in-out, ph-rest-near 6s ease-in-out 1.5s infinite; }
+.ph-machine[data-flap="b"] .ph-wing-far { animation: ph-beat-far-b 1.5s ease-in-out, ph-rest-far 6s ease-in-out 1.5s infinite; }
+.ph-machine[data-flap="b"] .ph-wing-near { animation: ph-beat-near-b 1.5s ease-in-out, ph-rest-near 6s ease-in-out 1.5s infinite; }
+@keyframes ph-beat-far-a { 0%, 100% { transform: rotate(0) } 16%, 48% { transform: rotate(-17deg) } 32%, 64% { transform: rotate(6deg) } 82% { transform: rotate(-9deg) } }
+@keyframes ph-beat-far-b { 0%, 100% { transform: rotate(0) } 16%, 48% { transform: rotate(-17deg) } 32%, 64% { transform: rotate(6deg) } 82% { transform: rotate(-9deg) } }
+@keyframes ph-beat-near-a { 0%, 100% { transform: rotate(0) } 16%, 48% { transform: rotate(13deg) } 32%, 64% { transform: rotate(-9deg) } 82% { transform: rotate(7deg) } }
+@keyframes ph-beat-near-b { 0%, 100% { transform: rotate(0) } 16%, 48% { transform: rotate(13deg) } 32%, 64% { transform: rotate(-9deg) } 82% { transform: rotate(7deg) } }
+@keyframes ph-rest-far { 0%, 70%, 100% { transform: rotate(0) } 78% { transform: rotate(-10deg) } 86% { transform: rotate(4deg) } 93% { transform: rotate(-3deg) } }
+@keyframes ph-rest-near { 0%, 70%, 100% { transform: rotate(0) } 78% { transform: rotate(8deg) } 86% { transform: rotate(-5deg) } 93% { transform: rotate(2deg) } }
+@media (prefers-reduced-motion: reduce) {
+  .ph-two, .ph-machine { transition: none; }
+  .ph-machine .ph-wing-far, .ph-machine .ph-wing-near { animation: none !important; }
 }
