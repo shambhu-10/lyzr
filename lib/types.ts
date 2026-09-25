@@ -8,7 +8,7 @@ export const STAGES: { id: Exclude<Stage, "live">; label: string }[] = [
   { id: "ship", label: "Ship" },
 ];
 
-export type Question = { id: string; text: string; multi: boolean; options: { label: string; hint?: string }[] };
+export type Question = { id: string; text: string; why?: string; multi: boolean; options: { label: string; hint?: string }[] };
 
 export type Block = {
   type: "stats" | "list" | "table" | "form" | "detail" | "text" | "agent";

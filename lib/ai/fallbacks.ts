@@ -37,15 +37,15 @@ export function fallbackQuestions(prompt: string) {
     return {
       intro: "A meeting assistant can combine your calendar, quick research and transcript-based follow-ups — with every email kept as a draft for your approval.",
       questions: [
-        { id: "eco", text: "Which calendar and email should it use?", multi: false, options: [{ label: "Google Workspace", hint: "Google Calendar + Gmail drafts" }, { label: "Microsoft 365", hint: "Outlook calendar + drafts" }] },
-        { id: "features", text: "What should v1 include?", multi: true, options: [{ label: "Meeting briefs", hint: "Agenda, attendees, context" }, { label: "Attendee research", hint: "Recent company & people news" }, { label: "Transcript follow-ups", hint: "Recap + action items + email draft" }] },
+        { id: "eco", text: "Which calendar and email should it use?", why: "Decides which accounts you connect before building.", multi: false, options: [{ label: "Google Workspace", hint: "Google Calendar + Gmail drafts" }, { label: "Microsoft 365", hint: "Outlook calendar + drafts" }] },
+        { id: "features", text: "What should v1 include?", why: "Fewer features ship faster; the rest stays on your list.", multi: true, options: [{ label: "Meeting briefs", hint: "Agenda, attendees, context" }, { label: "Attendee research", hint: "Recent company & people news" }, { label: "Transcript follow-ups", hint: "Recap + action items + email draft" }] },
         { id: "data", text: "Should it remember past meetings?", multi: false, options: [{ label: "Yes, keep a history", hint: "Briefs and follow-ups saved" }, { label: "No, nothing stored", hint: "Each run is fresh" }] },
       ],
     };
   return {
     intro: "Here's how I understand your idea. A few quick choices will shape what I build first.",
     questions: [
-      { id: "users", text: "Who will use it?", multi: false, options: [{ label: "Just me", hint: "Personal tool" }, { label: "My team", hint: "Shared workspace with sign-in" }, { label: "Customers", hint: "Public-facing app" }] },
+      { id: "users", text: "Who will use it?", why: "Decides sign-in, sharing and how polished it needs to be.", multi: false, options: [{ label: "Just me", hint: "Personal tool" }, { label: "My team", hint: "Shared workspace with sign-in" }, { label: "Customers", hint: "Public-facing app" }] },
       { id: "ai", text: "What should the AI agent do?", multi: true, options: [{ label: "Analyse and summarise", hint: "Reads inputs, produces insights" }, { label: "Take actions", hint: "Updates tools — with your approval" }, { label: "Answer questions", hint: "Chat over your data" }] },
       { id: "data", text: "Should it save data between sessions?", multi: false, options: [{ label: "Yes", hint: "Records and history" }, { label: "No", hint: "Nothing stored" }] },
     ],

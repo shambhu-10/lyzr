@@ -5,6 +5,7 @@ import { llmEnabled } from "@/lib/ai/llm";
 import { filesFor } from "@/lib/script/files";
 import { logUsage } from "@/lib/usage-log";
 import { diffStats } from "@/lib/diff";
+import { estimate } from "@/lib/ai/estimate";
 import type { Plan, Project, Stage } from "@/lib/types";
 
 export type Msg = { id: string; role: "user" | "assistant"; kind: string; content: string; meta: Record<string, unknown> | null; created_at: string };
@@ -23,11 +24,11 @@ async function say(supabase: Awaited<ReturnType<typeof requireUser>>["supabase"]
 
 const touch = () => new Date().toISOString();
 
-export async function askQuestions(id: string) {
+export async function askQuestions(id: string, developer = false) {
   const { supabase, project } = await load(id);
   const { data: existing } = await supabase.from("messages").select("id").eq("project_id", id).eq("kind", "questions").limit(1);
   if (existing?.length) return null;
-  const q = await clarify(project.prompt);
+  const q = await clarify(project.prompt, developer);
   await logUsage(supabase, id, "questions", q.usage);
   return say(supabase, id, { role: "assistant", kind: "questions", content: q.intro, meta: { questions: q.questions, live: q.live } });
 }
@@ -145,6 +146,10 @@ export async function quickChange(id: string, text: string) {
   const userMsg = await say(supabase, id, { role: "user", kind: "text", content: text });
   const r = await changeApp(project.plan, text);
   await logUsage(supabase, id, "change", r.usage);
+  if (r.live && r.clarify.needed && r.clarify.options.length) {
+    const reply = await say(supabase, id, { role: "assistant", kind: "questions", content: "Quick check before I change anything:", meta: { forChange: text, questions: [{ id: "c", text: r.clarify.question, multi: false, options: r.clarify.options.map((o) => ({ label: o })) }] } });
+    return { messages: [userMsg, reply], plan: project.plan, files: null, version: null };
+  }
   if (!r.live) {
     const reply = await say(supabase, id, { role: "assistant", kind: "text", content: r.summary, meta: { live: false, failed: llmEnabled } });
     return { messages: [userMsg, reply], plan: project.plan, files: null, version: null };
@@ -161,4 +166,30 @@ export async function quickChange(id: string, text: string) {
   const reply = await say(supabase, id, { role: "assistant", kind: "change", content: r.summary, meta: { changes: r.changes, diff } });
   const { data: files } = await supabase.from("files").select("path, content").eq("project_id", id).order("path");
   return { messages: [userMsg, reply], plan, files, version };
+}
+
+const clip = (s: unknown, n = 400) => String(s ?? "").slice(0, n);
+
+/** Manual plan edits (inline or AGENTS.md). Server re-derives the estimate and keeps each edit as a version. */
+export async function savePlan(id: string, next: Plan, via: "inline" | "agents-md") {
+  const { supabase, project } = await load(id);
+  if (!project.plan) throw new Error("No plan");
+  // Return (not throw) user-facing errors: production redacts thrown server-action messages.
+  if (!["plan", "connect"].includes(project.stage)) return { error: "The plan is locked after build — ask Architect for changes instead." };
+  const plan: Plan = {
+    ...project.plan,
+    name: clip(next.name, 60) || project.plan.name,
+    tagline: clip(next.tagline, 140),
+    summary: clip(next.summary, 1200),
+    scope: next.scope.slice(0, 30).map((s) => ({ item: clip(s.item, 200), status: (s.status === "later" ? "later" : "in") as "in" | "later", reason: clip(s.reason, 300) })).filter((s) => s.item),
+    screens: next.screens.slice(0, 8).map((s) => ({ ...s, name: clip(s.name, 60), purpose: clip(s.purpose, 300) })).filter((s) => s.name),
+    agents: next.agents.slice(0, 6).map((a) => ({ name: clip(a.name, 60), role: clip(a.role, 300), tools: (a.tools ?? []).slice(0, 10).map((t) => clip(t, 60)) })).filter((a) => a.name),
+    data: next.data.slice(0, 20).map((d) => clip(d, 120)).filter(Boolean),
+    connections: next.connections.slice(0, 12),
+  };
+  if (!plan.screens.length || !plan.agents.length) return { error: "A plan needs at least one screen and one agent." };
+  plan.estimate = estimate(plan);
+  await supabase.from("projects").update({ plan, name: plan.name, updated_at: touch() }).eq("id", id);
+  await supabase.from("versions").insert({ project_id: id, label: via === "inline" ? "Edited the plan by hand" : "Edited AGENTS.md", snapshot: { plan, summary: "Plan edited manually." } });
+  return { plan };
 }

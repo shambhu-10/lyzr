@@ -98,7 +98,7 @@ export function ConnectCard({ plan, project, onSet, onStart, reusable = [] }: {
 
 /* ---------------- Build ---------------- */
 
-export function BuildCard({ steps, at, mode, paused, onPause, remaining, waitingForAI }: { steps: BuildStep[]; at: number; mode: Mode; paused: boolean; onPause: () => void; remaining: number; waitingForAI?: boolean }) {
+export function BuildCard({ steps, at, mode, paused, onPause, remaining, waitingForAI, focus }: { steps: BuildStep[]; at: number; mode: Mode; paused: boolean; onPause: () => void; remaining: number; waitingForAI?: boolean; focus?: React.ReactNode }) {
   const pct = Math.round((Math.min(at, steps.length) / steps.length) * 100);
   const done = at >= steps.length;
   if (mode === "developer")
@@ -121,6 +121,7 @@ export function BuildCard({ steps, at, mode, paused, onPause, remaining, waiting
           ))}
         </ul>
         {!done && <Button size="xs" variant="outline" className="mt-3" onClick={onPause}>{paused ? <><Play /> Resume AI</> : <><Pause /> Pause AI &amp; edit by hand</>}</Button>}
+        {focus}
       </Card>
     );
   return (
@@ -137,6 +138,7 @@ export function BuildCard({ steps, at, mode, paused, onPause, remaining, waiting
           </li>
         ))}
       </ul>
+      {focus}
       {!done && <p className="mt-3 text-[11px] text-muted-foreground">You can switch tabs — we&apos;ll notify you when it&apos;s ready. Screens are designed live by AI; the rest of the pipeline is simulated in this prototype.</p>}
     </Card>
   );

@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
-import { ArrowUp, Bot, FolderInput, LayoutTemplate, Loader2, Mic, Paperclip, SlidersHorizontal, X } from "lucide-react";
+import { ArrowUp, Bot, FolderInput, LayoutTemplate, Loader2, Paperclip, SlidersHorizontal, X } from "lucide-react";
+import { VoiceButton } from "@/components/voice-button";
 import { createProject } from "@/lib/actions/projects";
 import { takePendingPrompt } from "@/lib/pending-prompt";
 import { FRAMEWORKS, MODELS } from "@/lib/catalog";
@@ -18,7 +19,6 @@ export function Composer({ mode, suggestions }: { mode: Mode; suggestions: strin
   const [framework, setFramework] = useState("lyzr");
   const [model, setModel] = useState<string>(MODELS[0]);
   const [file, setFile] = useState<string | null>(null);
-  const [listening, setListening] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -28,18 +28,6 @@ export function Composer({ mode, suggestions }: { mode: Mode; suggestions: strin
     if (p) setPrompt(p);
     areaRef.current?.focus();
   }, []);
-
-  const dictate = () => {
-    const SR = (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionLike; SpeechRecognition?: new () => SpeechRecognitionLike }).SpeechRecognition
-      ?? (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionLike }).webkitSpeechRecognition;
-    if (!SR) return alert("Voice input isn't supported in this browser.");
-    const r = new SR();
-    r.lang = "en-US";
-    r.onresult = (e) => setPrompt((p) => (p ? p + " " : "") + e.results[0][0].transcript);
-    r.onend = () => setListening(false);
-    setListening(true);
-    r.start();
-  };
 
   const placeholder = kind === "app" ? "Describe the app you want — who it's for and what it should do…" : "Describe the agent — its job, the tools it uses, and when it runs…";
 
@@ -88,7 +76,7 @@ export function Composer({ mode, suggestions }: { mode: Mode; suggestions: strin
           <div className="flex items-center gap-1">
             <input ref={fileRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0]?.name ?? null)} />
             <IconBtn label="Attach a file, screenshot or design" onClick={() => fileRef.current?.click()}><Paperclip className="size-4" /></IconBtn>
-            <IconBtn label="Dictate" onClick={dictate} active={listening}><Mic className="size-4" /></IconBtn>
+            <VoiceButton onText={(t) => setPrompt((p) => (p ? `${p} ${t}` : t))} className="h-8 px-2" />
             <IconBtn label="Developer options" onClick={() => setAdvanced((a) => !a)} active={advanced}><SlidersHorizontal className="size-4" /></IconBtn>
           </div>
           <Submit disabled={!prompt.trim()} />
@@ -103,8 +91,6 @@ export function Composer({ mode, suggestions }: { mode: Mode; suggestions: strin
     </div>
   );
 }
-
-type SpeechRecognitionLike = { lang: string; start: () => void; onresult: (e: { results: { 0: { 0: { transcript: string } } } }) => void; onend: () => void };
 
 function IconBtn({ label, onClick, active, children }: { label: string; onClick: () => void; active?: boolean; children: React.ReactNode }) {
   return (

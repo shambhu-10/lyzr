@@ -9,10 +9,11 @@ import { fallbackBlocks, fallbackPlan, fallbackQuestions } from "./fallbacks";
 /* ---------------- schemas (Groq strict mode: every field required, empty values instead of optional) ---------------- */
 
 const QuestionsSchema = z.object({
-  intro: z.string().describe("One or two sentences restating the idea in plain language and what you'll clarify."),
+  intro: z.string().describe("One or two sentences: your understanding of the idea and the key decisions left open."),
   questions: z.array(z.object({
     id: z.string(),
     text: z.string(),
+    why: z.string().describe("One short line: why this choice changes what gets built"),
     multi: z.boolean().describe("true if several options can be chosen"),
     options: z.array(z.object({ label: z.string(), hint: z.string() })).min(2).max(4),
   })).min(2).max(4),
@@ -63,7 +64,12 @@ const PlanSchema = z.object({
 const ScreenUISchema = z.object({ blocks: z.array(BlockSchema).min(2).max(5) });
 
 const ChangeSchema = z.object({
-  summary: z.string().describe("One plain-language sentence a non-technical user understands, e.g. 'Made the brief shorter and added a copy button'"),
+  clarify: z.object({
+    needed: z.boolean().describe("true ONLY if the request is too vague to apply well (e.g. 'make it better'); then leave screens unchanged"),
+    question: z.string(),
+    options: z.array(z.string()).describe("2-4 concrete interpretations, recommended first; empty if not needed"),
+  }),
+  summary: z.string().describe("One plain-language sentence a non-technical user understands, e.g. 'Made the brief shorter and added a copy button' — never mention blocks, fields or JSON"),
   changes: z.array(z.string()).describe("2-5 short bullets of what changed, naming screens, in plain words a non-technical user understands — never mention blocks, fields, meta or JSON"),
   screens: z.array(ScreenSchema.extend({ blocks: z.array(BlockSchema) })).describe("The full, updated list of screens with their blocks"),
 });
@@ -85,8 +91,8 @@ Keep titles short. Unused fields must be empty strings or empty arrays.`;
 
 export type Step<T> = T & { live: boolean; usage: Usage[] };
 
-export async function clarify(prompt: string): Promise<Step<{ intro: string; questions: Question[] }>> {
-  const r = await structured(QuestionsSchema, "clarify", SYSTEM, `The user wants to build:\n"""${prompt}"""\n\nAsk 2-4 multiple-choice clarifying questions that most change what gets built (e.g. which tools/ecosystem, which features in v1, whether to save data, who uses it). Recommended option first.`, "low");
+export async function clarify(prompt: string, developer = false): Promise<Step<{ intro: string; questions: Question[] }>> {
+  const r = await structured(QuestionsSchema, "clarify", SYSTEM, `The user wants to build:\n"""${prompt}"""\n\nFirst reason about what is ambiguous or missing. Then ask 2-4 multiple-choice questions that most change what gets built (e.g. which tools/ecosystem, which features in v1, whether to save data, who uses it). Put your recommended option FIRST (do not write "recommended" in labels — the UI marks it), and give every option a short hint.${developer ? "\nThe user is a developer: include one technical question (e.g. agent framework, data store, or auth approach)." : "\nThe user is non-technical: no technical jargon in questions or options."}`, "medium");
   return r ? { ...r.data, live: true, usage: [r.usage] } : { ...fallbackQuestions(prompt), live: false, usage: [] };
 }
 
@@ -112,11 +118,11 @@ export async function generateScreen(plan: Plan, i: number): Promise<Step<{ bloc
 }
 
 /** Real post-build iteration: apply a change request to the app's screens and explain what changed. */
-export async function changeApp(plan: Plan, instruction: string): Promise<Step<{ summary: string; changes: string[]; screens: Screen[] }>> {
+export async function changeApp(plan: Plan, instruction: string): Promise<Step<{ summary: string; changes: string[]; screens: Screen[]; clarify: { needed: boolean; question: string; options: string[] } }>> {
   const r = await structured(ChangeSchema, "change", `${UI_SYSTEM}\nYou are editing an existing app. Change only what the request needs; keep everything else identical.`,
     `Current app (JSON):\n${JSON.stringify({ name: plan.name, agents: plan.agents, connections: plan.connections, screens: plan.screens })}\n\nChange request: "${instruction}"`, "medium");
   if (r) return { ...r.data, live: true, usage: [r.usage] };
-  return { summary: "I couldn't apply that change right now — your app is unchanged.", changes: [], screens: plan.screens, live: false, usage: [] };
+  return { summary: "I couldn't apply that change right now — your app is unchanged.", changes: [], screens: plan.screens, clarify: { needed: false, question: "", options: [] }, live: false, usage: [] };
 }
 
 export { fallbackBlocks } from "./fallbacks";

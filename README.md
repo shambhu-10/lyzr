@@ -58,6 +58,12 @@ Home · Projects · Agents · Connections · Explore | Usage & billing · Settin
 - **Plain-English tests for agents.** Write "should never promise a refund"; each test runs the agent, and an AI judge grades the answer.
 - **Real cost tracking.** Every model call is metered from the provider's reported token counts and list prices.
 - **For developers:** Environments, Logs, "Download code" (zip), "Open in Cursor", and a ⌘K command palette.
+- **Editable plan:** click any text in the plan to change it, add or remove screens, agents and scope items, and undo. Developers can also edit `AGENTS.md` directly; the app reads it back into the plan.
+- **Clarifying questions like a senior teammate:** each question comes with a "why I'm asking" line, a recommended option, an "Other…" free-text answer, and "Use all recommended". Developer view adds a technical question. Vague change requests ("make it better") get a quick question before anything changes.
+- **Resizable workspace:** drag the divider between chat and app, collapse the chat into a thin bar, double-click to reset. Sizes are remembered.
+- **Voice input:** tap the mic in the chat panel or on Home. Groq Whisper transcribes the recording, and you can edit the text before sending.
+- **Copilot-style code editor:** ghost-text autocomplete (Tab to accept), ⌘K "Edit with AI" on a selection, and right-click "Fix with AI" or "Explain in chat". The chat becomes code-aware in the Code tab (`@file`), and every AI edit is shown as a side-by-side diff to accept or reject.
+- **Focus mode:** during a build you can turn on calm, generated ambient music (Web Audio, so no audio files or licensing). It shows "while you wait" suggestions and plays a chime when the build finishes.
 - **Onboarding:** one-click templates (skip the questions), a sample project, a first-run tour, and a browser notification when a build finishes.
 
 ## What's real and what's simulated
@@ -75,6 +81,9 @@ Home · Projects · Agents · Connections · Explore | Usage & billing · Settin
 | Google Calendar (read-only OAuth, real events) | |
 | Preview comments, agent evals with an AI judge, metered AI usage and logs | |
 | Code download as a zip | |
+| Editor AI: autocomplete, ⌘K edits with diff review, code-aware chat | |
+| Voice input (Groq Whisper) | |
+| Plan editing, including reading `AGENTS.md` back into the plan | |
 | Your real GitHub repo list on Import | |
 | Public live URL (`/live/[slug]`) that renders the shipped app | |
 

@@ -94,7 +94,7 @@ export function AgentBody({ agent, mode, onChange }: { agent: AgentRow; mode: Mo
         <TabsContent value="model" className="space-y-4 text-sm">
           <label className="block space-y-1.5"><span className="font-medium">Model</span>
             <select value={a.model} onChange={(e) => patch({ model: e.target.value })} className="w-full rounded-lg border bg-background px-2 py-1.5">
-              {["openai/gpt-oss-120b", "llama-3.3-70b-versatile", "openai/gpt-oss-20b"].map((m) => <option key={m}>{m}</option>)}
+              {["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"].map((m) => <option key={m}>{m}</option>)}
             </select>
           </label>
           <label className="block space-y-1.5"><span className="font-medium">Reasoning effort</span>

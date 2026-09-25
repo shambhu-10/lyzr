@@ -121,7 +121,7 @@ ${plan.summary}
 ${plan.scope.map((s) => `- [${s.status === "in" ? "x" : " "}] ${s.item}${s.reason ? ` — ${s.reason}` : ""}`).join("\n")}
 
 ## Screens
-${screens.map((s) => `- \`/${s.route}\` — ${s.purpose}`).join("\n")}
+${screens.map((s) => `- **${s.name}** (\`/${s.route}\`) — ${s.purpose}`).join("\n")}
 
 ## Agents
 ${plan.agents.map((a) => `- **${a.name}**: ${a.role}${a.tools.length ? ` (tools: ${a.tools.join(", ")})` : ""}`).join("\n")}

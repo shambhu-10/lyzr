@@ -7,6 +7,6 @@ export const FRAMEWORKS = [
   { id: "mastra", label: "Mastra", lang: "TypeScript" },
 ] as const;
 
-export const MODELS = ["GPT-OSS 120B · Groq", "Llama 3.3 70B · Groq", "GPT-OSS 20B · Groq"] as const;
+export const MODELS = ["GPT-OSS 120B · Groq", "GPT-OSS 20B · Groq", "Qwen 3.8 27B · Groq"] as const;
 
 export const frameworkLabel = (id?: string) => FRAMEWORKS.find((f) => f.id === id)?.label ?? "Lyzr";

@@ -8,12 +8,15 @@ import { PlanPanel } from "./plan-panel";
 import { CodePanel } from "./code-panel";
 import { EnvPanel, LogsPanel } from "./dev-panels";
 import { Tour } from "./tour";
+import { FocusMode } from "./focus-mode";
+import { DiffReview, type ProposedEdit } from "./diff-review";
+import { codeAI } from "./code-panel";
 import { BuildCard, ConnectCard, LiveCard, ShipCard, TestCard } from "./stage-cards";
 import { AppPreview } from "@/components/app-preview/app-preview";
 import { AgentCanvas } from "@/components/agents/agent-canvas";
 import { AgentDrawer } from "@/components/agents/agent-drawer";
 import { Button } from "@/components/ui/button";
-import { askQuestions, deploy, finishBuild, generateUI, quickChange, revertTo, revisePlan, saveFile, setConnection, setStage, submitAnswers, type Msg } from "@/lib/actions/workspace";
+import { askQuestions, deploy, finishBuild, generateUI, quickChange, revertTo, revisePlan, saveFile, savePlan, setConnection, setStage, submitAnswers, type Msg } from "@/lib/actions/workspace";
 import { addComment, markComments, type Comment } from "@/lib/actions/comments";
 import { buildSteps, testChecks } from "@/lib/script/build";
 import { filesFor } from "@/lib/script/files";
@@ -21,10 +24,19 @@ import { projectSpend } from "@/lib/usage";
 import type { AgentRow, FileRow, VersionRow } from "@/lib/workspace-types";
 import type { Mode, Plan, Project, Stage } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useMedia } from "@/hooks/use-media";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { useDefaultLayout, useGroupRef, usePanelRef } from "react-resizable-panels";
 
 type Tab = "plan" | "preview" | "agents" | "code" | "env" | "logs" | "data" | "versions";
 const ORDER: Stage[] = ["plan", "connect", "build", "test", "ship", "live"];
 const TEMPLATE_ANSWERS = "Use the recommended option for every question — this project started from a template.";
+
+// Panel sizes persist per browser; storage can be missing (SSR) or blocked (private mode).
+const safeStorage = {
+  getItem: (k: string) => { try { return typeof window === "undefined" ? null : localStorage.getItem(k); } catch { return null; } },
+  setItem: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch {} },
+};
 
 /** Tell the user when a long build finishes while they're in another tab. */
 function notifyDone(name: string) {
@@ -50,8 +62,16 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   const [busy, setBusy] = useState<string | null>(null);
   const [planFirst, setPlanFirst] = useState(false);
   const [commenting, setCommenting] = useState(false);
+  const [openFile, setOpenFile] = useState("");
+  const [codeEdit, setCodeEdit] = useState<ProposedEdit | null>(null);
+  const [codeKey, setCodeKey] = useState(0);
   const [drawer, setDrawer] = useState<AgentRow | null>(null);
   const [mobilePane, setMobilePane] = useState<"chat" | "app">("chat");
+  const desktop = useMedia("(min-width: 768px)");
+  const layout = useDefaultLayout({ id: "architect-workspace", storage: safeStorage });
+  const groupRef = useGroupRef();
+  const chatPanel = usePanelRef();
+  const [chatCollapsed, setChatCollapsed] = useState(() => (layout.defaultLayout?.chat ?? 32) < 6); // restored collapsed layout
   const plan = project.plan;
   const source = (project.source ?? {}) as { framework?: string; template?: boolean };
   const framework = source.framework ?? "lyzr";
@@ -92,8 +112,8 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (source.template) { void onAnswer(TEMPLATE_ANSWERS); return; }
     setBusy("Reading your idea…");
-    askQuestions(project.id).then((m) => { if (m) setMessages((x) => [...x, m]); }).finally(() => setBusy(null));
-  }, [project.id, project.stage, plan, messages, source.template, onAnswer]);
+    askQuestions(project.id, mode === "developer").then((m) => { if (m) setMessages((x) => [...x, m]); }).finally(() => setBusy(null));
+  }, [project.id, project.stage, plan, messages, source.template, onAnswer, mode]);
 
   const revise = async (instruction: string) => {
     setBusy("Updating the plan…"); setTab("plan");
@@ -117,7 +137,21 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
     finally { setBusy(null); }
   };
 
+  /** In the Code tab the chat is code-aware: it answers about the open file and can propose a reviewed edit. */
+  const askCode = async (question: string) => {
+    const file = files.find((f) => f.path === openFile);
+    if (!file) return toast("Open a file first.");
+    const now = new Date().toISOString();
+    push([{ id: crypto.randomUUID(), role: "user", kind: "code", content: question, meta: { file: file.path }, created_at: now }]);
+    setBusy(`Reading ${file.path}…`);
+    const r = await codeAI({ op: "chat", projectId: project.id, path: file.path, file: file.content, files: files.map((f) => f.path), question }).catch(() => ({ error: "Network error" }));
+    setBusy(null);
+    if (r.error) return toast.error(r.error);
+    push([{ id: crypto.randomUUID(), role: "assistant", kind: "code", content: r.answer, meta: r.edit ? { edit: { path: file.path, original: file.content, modified: r.edit.content, summary: r.edit.summary } } : { file: file.path }, created_at: now }]);
+  };
+
   const onSend = async (text: string) => {
+    if (tab === "code" && mode === "developer" && reached >= ORDER.indexOf("test")) return askCode(text);
     if (!plan) return toast("Answer the questions above first, or pick the recommended options.");
     if (project.stage === "plan" || project.stage === "connect" || planFirst) return revise(text);
     if (project.stage === "build") return toast("Hang on — I'm still building. Ask again in a moment.");
@@ -209,7 +243,8 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
     if (a) setDrawer(a); else toast("This agent will be created when you build.");
   }, [agents]);
 
-  const placeholder = !plan ? "Or describe anything else you want…" : project.stage === "plan" ? "Ask for changes to the plan…" : planFirst ? "Describe a change — I'll update the plan first…" : "Ask for a change, e.g. “add a search box to the inbox”…";
+  const codeChat = tab === "code" && mode === "developer" && reached >= ORDER.indexOf("test");
+  const placeholder = codeChat ? `Ask about ${openFile || "this file"} or ask for a change…` : !plan ? "Or describe anything else you want…" : project.stage === "plan" ? "Ask for changes to the plan…" : planFirst ? "Describe a change — I'll update the plan first…" : "Ask for a change, e.g. “add a search box to the inbox”…";
   const credits = Math.max(0, 20 - otherSpend - projectSpend(project));
   const later = plan?.scope.filter((s) => s.status === "later").map((s) => s.item) ?? [];
 
@@ -217,7 +252,12 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
     if (!plan) return null;
     if (ORDER.indexOf(view) > reached) return null;
     if (view === "connect") return <ConnectCard plan={plan} project={project} onSet={onSetConnection} onStart={startBuild} reusable={workspaceConnections} />;
-    if (view === "build") return building ? <BuildCard steps={steps} at={at} mode={mode} paused={paused} onPause={() => setPaused((p) => !p)} remaining={remaining} waitingForAI={!uiReady && steps[at]?.reveal !== undefined} /> : <BuildCard steps={steps} at={steps.length} mode={mode} paused={false} onPause={() => {}} remaining={0} />;
+    if (view === "build") return building ? <BuildCard steps={steps} at={at} mode={mode} paused={paused} onPause={() => setPaused((p) => !p)} remaining={remaining} waitingForAI={!uiReady && steps[at]?.reveal !== undefined}
+      focus={<FocusMode done={at >= steps.length} tips={[
+        { label: "Re-read your plan", onClick: () => setTab("plan") },
+        mode === "developer" ? { label: "Watch the code being written", onClick: () => setTab("code") } : { label: "Watch screens appear", onClick: () => setTab("preview") },
+        ...(project.demo_data ? [{ label: "Connect real accounts", onClick: () => setView("connect") }] : []),
+      ]} />} /> : <BuildCard steps={steps} at={steps.length} mode={mode} paused={false} onPause={() => {}} remaining={0} />;
     if (view === "test") return <TestCard checks={testChecks(plan, project.demo_data)} mode={mode} onFix={() => setView("connect")} onPlayground={() => { setTab("agents"); if (agents[0]) setDrawer(agents[0]); }} onContinue={() => goStage("ship")} />;
     if (view === "ship") return project.stage === "live" ? <LiveCard project={project} later={later} onAddBack={(s) => change(`Add this from the plan's "later" list: ${s}`)} /> : <ShipCard project={project} onDeploy={onDeploy} onFixConnections={() => setView("connect")} />;
     return null;
@@ -235,23 +275,16 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   ];
   const canComment = reached >= ORDER.indexOf("test");
 
-  return (
-    <div className="flex h-screen flex-col">
-      <WorkspaceHeader project={project} mode={mode} onMode={setMode} view={view} onView={setView} credits={credits} />
-      <div className="flex border-b md:hidden">
-        {(["chat", "app"] as const).map((p) => (
-          <button key={p} onClick={() => setMobilePane(p)} className={cn("flex flex-1 items-center justify-center gap-1.5 py-2 text-sm text-muted-foreground", mobilePane === p && "border-b-2 border-foreground font-medium text-foreground")}>
-            {p === "chat" ? <MessageSquare className="size-4" /> : <Eye className="size-4" />}{p === "chat" ? "Chat" : "App"}
-          </button>
-        ))}
-      </div>
-      <div className="flex min-h-0 flex-1">
-        <section className={cn("min-h-0 w-full flex-col border-r md:flex md:w-[400px] md:shrink-0 lg:w-[420px]", mobilePane === "chat" ? "flex" : "hidden")} aria-label="Chat with Architect">
-          <Chat messages={messages} busy={!!busy} busyLabel={busy ?? ""} placeholder={placeholder} onSend={onSend} onAnswer={onAnswer} planToggle={planFirst} onPlanToggle={setPlanFirst}>
-            {stageCard()}
-          </Chat>
-        </section>
-        <section className={cn("min-h-0 min-w-0 flex-1 flex-col md:flex", mobilePane === "app" ? "flex" : "hidden")} aria-label="Your app">
+  const chatNode = (
+          <Chat messages={messages} busy={!!busy} busyLabel={busy ?? ""} placeholder={placeholder} onSend={onSend}
+      context={codeChat && openFile ? `@${openFile}` : undefined} onReviewEdit={(e) => setCodeEdit(e as ProposedEdit)}
+      onAnswer={(a, m) => (m.meta?.forChange ? change(`${m.meta.forChange}\nClarification from the user: ${a}`) : onAnswer(a))} planToggle={planFirst} onPlanToggle={setPlanFirst}>
+      {stageCard()}
+    </Chat>
+  );
+
+  const appNode = (
+    <>
           <div className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b px-2">
             {TABS.filter((t) => !t.dev || mode === "developer").map((t) => (
               <button key={t.id} onClick={() => setTab(t.id)} className={cn("flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs whitespace-nowrap text-muted-foreground hover:text-foreground", tab === t.id && "bg-muted font-medium text-foreground", t.dev && "text-dev")}>
@@ -266,7 +299,14 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
             )}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto bg-muted/30">
-            {tab === "plan" && <PlanPanel plan={plan} mode={mode} framework={framework} busy={!!busy} canApprove={project.stage === "plan"} onApprove={() => { goStage("connect"); toast.success("Plan approved"); }} onAddBack={(item) => revise(`Add back: ${item}`)} />}
+            {tab === "plan" && <PlanPanel plan={plan} mode={mode} framework={framework} busy={!!busy} canApprove={project.stage === "plan"} canEdit={project.stage === "plan" || project.stage === "connect"}
+              onApprove={() => { goStage("connect"); toast.success("Plan approved"); }} onAddBack={(item) => revise(`Add back: ${item}`)}
+              onSave={async (p, via) => {
+                patch({ plan: p, name: p.name }); // optimistic
+                const r = await savePlan(project.id, p, via).catch(() => ({ error: "Couldn't save the plan" }));
+                if ("error" in r) { toast.error(r.error); patch({ plan }); return false; }
+                patch({ plan: r.plan, name: r.plan.name }); return true;
+              }} />}
             {tab === "preview" && (plan && (revealed || building) ? (
               <div className="h-full p-4">
                 {commenting && <p className="mb-2 text-center text-xs text-muted-foreground">Click any part of the app to leave a comment. Send them to Architect when you&apos;re done.</p>}
@@ -275,7 +315,8 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
               </div>
             ) : <EmptyPreview stage={plan ? project.stage : "plan"} />)}
             {tab === "agents" && (plan ? <AgentCanvas plan={plan} framework={framework} built={agents.length > 0} onOpen={openAgent} /> : <EmptyPreview stage="plan" />)}
-            {tab === "code" && <CodePanel files={liveFiles} locked={building && !paused} terminal={terminal} writing={writing} name={project.slug}
+            {tab === "code" && <CodePanel key={codeKey} files={liveFiles} locked={building && !paused} terminal={terminal} writing={writing} name={project.slug}
+              projectId={project.id} onOpenFile={setOpenFile} onAsk={(q) => { void askCode(q); }}
               onSave={(p, c) => { setFiles((fs) => fs.map((f) => (f.path === p ? { ...f, content: c } : f))); return saveFile(project.id, p, c); }} />}
             {tab === "env" && <EnvPanel project={project} plan={plan} />}
             {tab === "logs" && <LogsPanel projectId={project.id} terminal={terminal} />}
@@ -287,8 +328,47 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
               toast.success(`Restored “${v.label}”`);
             }} />}
           </div>
-        </section>
+    </>
+  );
+
+  return (
+    <div className="flex h-screen flex-col">
+      <WorkspaceHeader project={project} mode={mode} onMode={setMode} view={view} onView={setView} credits={credits} />
+      <div className={cn("flex border-b", desktop && "hidden")}>
+        {(["chat", "app"] as const).map((p) => (
+          <button key={p} onClick={() => setMobilePane(p)} className={cn("flex flex-1 items-center justify-center gap-1.5 py-2 text-sm text-muted-foreground", mobilePane === p && "border-b-2 border-foreground font-medium text-foreground")}>
+            {p === "chat" ? <MessageSquare className="size-4" /> : <Eye className="size-4" />}{p === "chat" ? "Chat" : "App"}
+          </button>
+        ))}
       </div>
+      {desktop ? (
+        <ResizablePanelGroup id="architect-workspace" orientation="horizontal" className="min-h-0 flex-1" defaultLayout={layout.defaultLayout} onLayoutChanged={layout.onLayoutChanged} groupRef={groupRef}>
+          <ResizablePanel id="chat" defaultSize="32%" minSize="260px" maxSize="60%" collapsible collapsedSize="44px" panelRef={chatPanel}
+            onResize={(size) => setChatCollapsed(size.inPixels < 60)}>
+            {chatCollapsed ? (
+              <button onClick={() => chatPanel.current?.expand()} aria-label="Show chat" className="flex h-full w-full flex-col items-center gap-2 border-r bg-card pt-4 text-muted-foreground hover:text-foreground">
+                <MessageSquare className="size-4" /><span className="text-[10px] [writing-mode:vertical-rl]">Chat</span>
+              </button>
+            ) : (
+              <section className="flex h-full min-h-0 flex-col" aria-label="Chat with Architect">{chatNode}</section>
+            )}
+          </ResizablePanel>
+          <ResizableHandle withHandle onDoubleClick={() => groupRef.current?.setLayout({ chat: 32, app: 68 })} title="Drag to resize · double-click to reset" />
+          <ResizablePanel id="app" minSize="360px">
+            <section className="flex h-full min-h-0 min-w-0 flex-col" aria-label="Your app">{appNode}</section>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          <section className={cn("min-h-0 w-full flex-col", mobilePane === "chat" ? "flex" : "hidden")} aria-label="Chat with Architect">{chatNode}</section>
+          <section className={cn("min-h-0 min-w-0 flex-1 flex-col", mobilePane === "app" ? "flex" : "hidden")} aria-label="Your app">{appNode}</section>
+        </div>
+      )}
+      <DiffReview edit={codeEdit} onClose={() => setCodeEdit(null)} onAccept={async (e) => {
+        setFiles((fs) => fs.map((f) => (f.path === e.path ? { ...f, content: e.modified } : f)));
+        await saveFile(project.id, e.path, e.modified);
+        setCodeKey((k) => k + 1); setCodeEdit(null); toast.success(`Updated ${e.path}`);
+      }} />
       <AgentDrawer agent={drawer} mode={mode} open={!!drawer} onOpenChange={(o) => !o && setDrawer(null)} onChange={(a) => setAgents((xs) => xs.map((x) => (x.id === a.id ? a : x)))} />
       <Tour />
     </div>

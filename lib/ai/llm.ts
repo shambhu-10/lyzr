@@ -3,7 +3,8 @@ import Groq from "groq-sdk";
 import { z } from "zod";
 
 export const MODEL = "openai/gpt-oss-120b"; // Groq production model with strict structured outputs
-export const CHAT_MODELS = ["openai/gpt-oss-120b", "llama-3.3-70b-versatile", "openai/gpt-oss-20b"];
+// Verified against this key's /models list (Llama models are not enabled for it).
+export const CHAT_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"];
 const client = process.env.GROQ_API_KEY ? new Groq() : null;
 export const llmEnabled = !!client;
 
