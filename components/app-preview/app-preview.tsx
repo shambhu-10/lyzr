@@ -40,8 +40,8 @@ function T({ v, path, ctx, className }: { v: string; path: string; ctx: Pick<Ctx
  * Renders a generated app from its plan: each screen is a list of AI-generated blocks.
  * Used in the workspace preview (screens assemble as the build reveals them) and on /live/[slug].
  */
-export function AppPreview({ plan, revealed, demo, building, projectId, slug, commenting, comments, onComment, onEditComment, onDeleteComment, still, editing, onEditText }: {
-  plan: Plan; revealed: number; demo: boolean; building?: boolean; projectId?: string; slug?: string;
+export function AppPreview({ plan, revealed, building, projectId, slug, commenting, comments, onComment, onEditComment, onDeleteComment, still, editing, onEditText }: {
+  plan: Plan; revealed: number; /** kept for callers; sample-data warnings live in Connect and Ship now */ demo?: boolean; building?: boolean; projectId?: string; slug?: string;
   /** Thumbnail mode: no data fetching. */ still?: boolean;
   /** "Edit text" mode: copy becomes directly editable. */ editing?: boolean; onEditText?: (path: string, value: string) => void;
   commenting?: boolean; comments?: Comment[]; onComment?: (t: CommentTarget, body: string) => void;
@@ -91,10 +91,8 @@ export function AppPreview({ plan, revealed, demo, building, projectId, slug, co
       </aside>
 
       <main className="min-w-0 flex-1 overflow-y-auto">
-        {calendar ? (
+        {calendar && (
           <div className="flex items-center gap-2 border-b border-emerald-200 bg-emerald-50 px-5 py-2 text-xs text-emerald-900"><CalendarCheck className="size-3.5" /> Live data — showing your real Google Calendar.</div>
-        ) : demo && (
-          <div className="border-b border-amber-200 bg-amber-50 px-5 py-2 text-xs text-amber-900"><b>Demo data.</b> This app is showing sample data — connect your real accounts to go live.</div>
         )}
         <div className="flex gap-1 overflow-x-auto border-b border-black/5 bg-white px-3 py-2 @3xl:hidden">
           {plan.screens.map((x, i) => (
@@ -198,7 +196,7 @@ function BlockView({ block: b, k, ctx }: { block: Block; k: number; ctx: Ctx }) 
       return (
         <div className={card}>
           <div className="flex items-center justify-between border-b border-black/5 px-4 py-2.5 text-sm font-medium">{t("title")}
-            {b.source === "google-calendar" && <span className={cn("rounded-full px-2 py-0.5 text-[10px]", live ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800")}>{live ? "Google Calendar" : "Sample"}</span>}
+            {live && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700">Google Calendar</span>}
           </div>
           {items.length ? items.map((x, j) => (
             <Row key={x.title + x.meta} onClick={() => ctx.onPick(x)} className={cn("flex w-full items-center gap-3 border-b border-black/5 px-4 py-3 text-left text-sm last:border-0 hover:bg-black/[.02]", ctx.selection?.title === x.title && "bg-(--a)/5")}>

@@ -16,12 +16,14 @@ import { AppPreview } from "@/components/app-preview/app-preview";
 import { AgentCanvas } from "@/components/agents/agent-canvas";
 import { AgentDrawer } from "@/components/agents/agent-drawer";
 import { Button } from "@/components/ui/button";
-import { askQuestions, deploy, editText, finishBuild, generateUI, quickChange, revertTo, revisePlan, saveFile, savePlan, setConnection, setStage, submitAnswers, type Msg } from "@/lib/actions/workspace";
+import { askQuestions, deploy, editText, setStack, finishBuild, generateUI, quickChange, revertTo, revisePlan, saveFile, savePlan, setConnection, setStage, submitAnswers, type Msg } from "@/lib/actions/workspace";
 import { LookPicker } from "./look-picker";
+import { AgentPreview } from "./agent-preview";
 import { addComment, deleteComment, markComments, updateComment, type Comment } from "@/lib/actions/comments";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { buildSteps, testChecks } from "@/lib/script/build";
 import { filesFor } from "@/lib/script/files";
+import { toStack } from "@/lib/catalog";
 import { projectSpend } from "@/lib/usage";
 import type { AgentRow, FileRow, VersionRow } from "@/lib/workspace-types";
 import type { Mode, Plan, Project, Stage } from "@/lib/types";
@@ -87,6 +89,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   const plan = project.plan;
   const source = project.source ?? {};
   const framework = source.framework ?? "lyzr";
+  const stack = useMemo(() => toStack(source.stack), [source.stack]);
   const reached = ORDER.indexOf(project.stage);
 
   useEffect(() => {
@@ -174,7 +177,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   const onSetConnection = async (id: string, s: "connected" | "sample") => { const r = await setConnection(project.id, id, s); patch(r); };
 
   /* ---- Build: timeline + real UI generation in parallel ---- */
-  const steps = useMemo(() => (plan ? buildSteps(plan, framework) : []), [plan, framework]);
+  const steps = useMemo(() => (plan ? buildSteps(plan, framework, stack) : []), [plan, framework, stack]);
   const [at, setAt] = useState(0);
   const [paused, setPaused] = useState(false);
   const [terminal, setTerminal] = useState<string[]>([]);
@@ -225,8 +228,8 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   const liveFiles: FileRow[] = useMemo(() => {
     if (!building || !plan) return files;
     const done = new Set(steps.slice(0, at + 1).map((s) => s.file).filter(Boolean));
-    return filesFor(plan, framework).filter((f, i) => (at > 0 && ["AGENTS.md", "app/layout.tsx", "lib/agents.ts", ".env.example"].includes(f.path)) || done.has(f.path) || (i === 0 && at > 0));
-  }, [building, plan, steps, at, files, framework]);
+    return filesFor(plan, framework, stack).filter((f) => (at > 0 && !f.role) || done.has(f.path)); // scaffold files first, screens as they're written
+  }, [building, plan, steps, at, files, framework, stack]);
   const writing = building ? steps[at]?.file : undefined;
   const remaining = Math.round(steps.slice(at).reduce((a, s) => a + s.ms, 0) / 1000);
 
@@ -321,7 +324,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
                 <t.icon className="size-3.5" />{t.label}
               </button>
             ))}
-            {tab === "preview" && canComment && !viewer && (
+            {tab === "preview" && canComment && !viewer && !plan?.trigger && (
               <div className="ml-auto flex items-center gap-2">
                 {openComments.length > 0 && <Button size="xs" onClick={() => setReviewComments(true)} disabled={!!busy}><Send /> Review &amp; send {openComments.length}</Button>}
                 <Button size="xs" variant="outline" onClick={() => setLookOpen(true)} title="Change colours, corners and fonts"><Palette /> Look</Button>
@@ -333,6 +336,12 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
           <div className="min-h-0 flex-1 overflow-y-auto bg-muted/30">
             {tab === "plan" && <PlanPanel plan={plan} mode={mode} framework={framework} busy={!!busy} canApprove={project.stage === "plan"} canEdit={!viewer && (project.stage === "plan" || project.stage === "connect")}
               actual={reached >= ORDER.indexOf("test") ? { spent: projectSpend(project), seconds: source.build?.seconds } : undefined}
+              projectId={project.id} stack={stack} onPlan={(p) => patch({ plan: p })}
+              onStack={async (st, fw) => {
+                const r = await setStack(project.id, st, fw).catch(() => ({ error: "Couldn't change the stack." }));
+                if ("error" in r) { toast.error(r.error); return; }
+                patch({ source: r.source as Project["source"], ...(r.plan ? { plan: r.plan } : {}) }); toast.success("Stack updated — the generated code will follow it");
+              }}
               lookSlot={plan && project.kind !== "agent" ? <LookPicker projectId={project.id} plan={plan} onPlan={(p) => patch({ plan: p })} disabled={building || viewer} /> : null}
               onApprove={() => { goStage("connect"); toast.success("Plan approved"); }} onAddBack={(item) => revise(`Add back: ${item}`)}
               onSave={async (p, via) => {
@@ -341,7 +350,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
                 if ("error" in r) { toast.error(r.error); patch({ plan }); return false; }
                 patch({ plan: r.plan, name: r.plan.name }); return true;
               }} />}
-            {tab === "preview" && (plan && (revealed || building) ? (
+            {tab === "preview" && plan?.trigger ? <AgentPreview plan={plan} agents={agents} slug={project.slug} live={project.stage === "live"} /> : tab === "preview" && (plan && (revealed || building) ? (
               <div className="h-full p-4">
                 {commenting && <p className="mb-2 text-center text-xs text-muted-foreground">Click any part of the app to leave a comment. Send them to Architect when you&apos;re done.</p>}
                 {editing && <p className="mb-2 text-center text-xs text-muted-foreground">Click any dashed text to change it. Enter saves, Esc cancels. Free, and every edit is a version you can undo.</p>}

@@ -93,7 +93,7 @@ export function ConnectCard({ plan, project, onSet, onStart, reusable = [], buil
           {pending.length ? `Connect or skip ${pending.length} more to continue` : `Start build · ~$${plan.estimate.credits.toFixed(2)} · ~${plan.estimate.minutes} min`}
         </Button>
       )}
-      {project.demo_data && !pending.length && <p className="mt-2 text-[11px] text-muted-foreground">Your app will show a “Demo data” badge until you connect real accounts. You can do that anytime.</p>}
+      {project.demo_data && !pending.length && <p className="mt-2 text-[11px] text-muted-foreground">Skipped accounts use sample data for now — connect them anytime; the Ship check will remind you.</p>}
 
       <ConsentDialog integration={consent} open={!!consent} onOpenChange={(o) => !o && setConsent(null)}
         onAllow={async () => { if (consent) { await onSet(consent.id, "connected"); toast.success(`${consent.name} connected`); } }} />

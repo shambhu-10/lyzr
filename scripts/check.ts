@@ -85,3 +85,44 @@ assert.equal(applyTextEdit(ep, "s.9.name", "x"), null);
 assert.equal(applyTextEdit(ep, "s.0.name", "   "), null);
 assert.equal(ep.screens[0].blocks[0].title, "Inbox", "original plan untouched");
 console.log("text edits ok");
+
+// Tech spec: sanitizing, SQL per database, codegen per stack.
+import { sanitizeTech, schemaSql, fallbackTech } from "../lib/tech-spec";
+import { DEFAULT_STACK, toStack } from "../lib/catalog";
+import { buildSteps as steps2 } from "../lib/script/build";
+const spec = sanitizeTech({ tables: [
+  { name: "Support Tickets!", purpose: "Tickets", access: "team", columns: [{ name: "id", type: "uuid" }, { name: "Subject", type: "text", nullable: false }, { name: "score", type: "float" }, { name: "subject", type: "text" }] },
+  { name: "support tickets", columns: [] }, { name: "123", columns: [] },
+] });
+assert.equal(spec.tables.length, 1, "duplicate/invalid table names dropped");
+assert.equal(spec.tables[0].name, "support_tickets");
+assert.deepEqual(spec.tables[0].columns.map((c) => [c.name, c.type, c.nullable]), [["subject", "text", false], ["score", "text", true]], "reserved/duplicate columns dropped, unknown types → text");
+const supa = schemaSql(spec, "supabase"), neonSql = schemaSql(spec, "neon"), lite = schemaSql(spec, "sqlite");
+assert.ok(supa.includes("enable row level security") && supa.includes('"team can read"') && supa.includes("auth.uid()"));
+assert.ok(!neonSql.includes("row level security") && neonSql.includes("gen_random_uuid()"));
+assert.ok(lite.includes("CREATE TABLE support_tickets") && lite.includes("subject TEXT NOT NULL") && !lite.includes("uuid"));
+assert.deepEqual(toStack({ frontend: "angular", database: "neon", model: "gpt-4" }), { ...DEFAULT_STACK, database: "neon" }, "unknown stack values fall back");
+const screensPlan = { ...plan, screens: [{ name: "Inbox", purpose: "p" }, { name: "Reply Draft", purpose: "p" }], agents: [{ name: "Triage", role: "r", tools: [] }], data: ["tickets"] };
+const nextFiles = filesFor(screensPlan, "lyzr", DEFAULT_STACK);
+assert.ok(nextFiles.some((f) => f.path === "app/page.tsx" && f.role === "screen") && nextFiles.some((f) => f.path === "app/reply-draft/page.tsx" && f.role === "screen"));
+assert.ok(nextFiles.some((f) => f.path === "supabase/migrations/0001_init.sql"));
+const viteStack = toStack({ frontend: "vite", database: "neon", auth: "clerk", model: "qwen/qwen3.8-27b" });
+const viteFiles = filesFor(screensPlan, "lyzr", viteStack);
+assert.ok(viteFiles.some((f) => f.path === "src/pages/ReplyDraft.tsx" && f.role === "screen") && viteFiles.some((f) => f.path === "server/index.ts") && viteFiles.some((f) => f.path === "db/schema.sql"));
+const pkg = JSON.parse(viteFiles.find((f) => f.path === "package.json")!.content);
+assert.ok(pkg.dependencies["@neondatabase/serverless"] && pkg.dependencies["@clerk/clerk-react"] && pkg.devDependencies.vite && !pkg.dependencies.next);
+assert.ok(viteFiles.find((f) => f.path === ".env.example")!.content.includes("DATABASE_URL="));
+assert.ok(steps2(screensPlan, "lyzr", viteStack).some((s) => s.file === "src/pages/Inbox.tsx"));
+assert.equal(fallbackTech([], DEFAULT_STACK).tables.length, 0);
+// AGENTS.md with the new Stack / Data model sections still reads back.
+const md2 = filesFor({ ...full, data: ["tickets"] }, "lyzr", viteStack).find((f) => f.path === "AGENTS.md")!.content;
+assert.ok(md2.includes("## Stack") && md2.includes("## Data model"));
+assert.deepEqual(parseAgentsMd(md2, full).warnings, []);
+assert.deepEqual(parseAgentsMd(md2, full).plan.agents, full.agents);
+// Agent projects: no screens, no screen steps, a trigger step, route instead of pages.
+const agentPlan = { ...plan, screens: [], agents: [{ name: "Triage", role: "r", tools: [] }], trigger: { kind: "schedule" as const, detail: "8am" }, tests: [{ input: "a", expect: "b" }] };
+const aSteps = steps2(agentPlan, "lyzr", DEFAULT_STACK);
+assert.ok(!aSteps.some((s) => s.reveal !== undefined) && aSteps.some((s) => s.id === "trigger"));
+const aFiles = filesFor(agentPlan, "lyzr", DEFAULT_STACK);
+assert.ok(!aFiles.some((f) => f.role === "screen") && aFiles.some((f) => f.path === "app/api/agents/[agent]/route.ts"));
+console.log("stack + tech spec + agent projects ok");

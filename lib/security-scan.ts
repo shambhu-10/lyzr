@@ -27,7 +27,7 @@ const SECRET_PATTERNS: { name: string; env: string; re: RegExp }[] = [
 // `apiKey = "…"` style literals that don't match a known provider.
 const GENERIC = /\b([A-Za-z_]*(?:api[_-]?key|secret|token|password|passwd)[A-Za-z_]*)\b\s*[:=]\s*["'`]([^"'`\s$]{12,})["'`]/i;
 const ENV_REF = /process\.env\.([A-Z][A-Z0-9_]*)|process\.env\[["']([A-Z][A-Z0-9_]*)["']\]/g;
-const PLATFORM_ENV = /^(ARCHITECT_|NODE_ENV$|NEXT_PUBLIC_)/; // provided by Architect's runtime
+const PLATFORM_ENV = /^(ARCHITECT_|NODE_ENV$|NEXT_PUBLIC_|VITE_|SUPABASE_|DATABASE_URL$|SQLITE_PATH$|CLERK_|AUTH_SECRET$)/; // provisioned by Architect for the chosen stack
 const RISKY_TOOL = /\b(send|post|publish|delete|remove|pay|charge|refund|transfer|email|tweet|merge)\b/i;
 
 export const mask = (s: string) => (s.length <= 8 ? "••••" : `${s.slice(0, 4)}••••${s.slice(-4)}`);

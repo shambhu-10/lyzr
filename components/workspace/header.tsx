@@ -33,7 +33,6 @@ export function WorkspaceHeader({ project, mode, onMode, view, onView, credits, 
       <input value={name} onChange={(e) => setName(e.target.value)} readOnly={role === "viewer"} onBlur={() => name !== project.name && renameProject(project.id, name)}
         aria-label="Project name" className="w-24 truncate sm:w-36 rounded-md bg-transparent px-1.5 py-1 text-sm font-medium outline-none hover:bg-muted focus:bg-muted lg:w-44" />
       {role !== "owner" && <span className="hidden rounded-md bg-dev-soft px-1.5 py-0.5 text-[11px] font-medium text-dev sm:inline">{role === "viewer" ? "View only" : "Shared with you"}</span>}
-      {project.demo_data && <span className="hidden rounded-md bg-warning-soft px-1.5 py-0.5 text-[11px] font-medium sm:inline">Demo data</span>}
 
       <span className="mx-auto hidden text-xs text-muted-foreground md:inline lg:hidden">
         Step {Math.min(current + 1, 5)} of 5 · {project.stage === "live" ? "Live" : STAGES[current]?.label}

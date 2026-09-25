@@ -4,8 +4,10 @@ import { structured, type Usage } from "./llm";
 import { INTEGRATIONS } from "@/lib/integrations";
 import type { Block, Plan, Question, Screen } from "@/lib/types";
 import { estimate } from "./estimate";
-import { fallbackBlocks, fallbackLooks, fallbackPlan, fallbackQuestions } from "./fallbacks";
+import { fallbackAgentPlan, fallbackBlocks, fallbackLooks, fallbackPlan, fallbackQuestions } from "./fallbacks";
 import { ACCENTS, FONTS, RADII, SIDEBARS, type AppTheme } from "@/lib/theme";
+import { ACCESS, COLUMN_TYPES, METHODS, fallbackTech, providedEnv, sanitizeTech, type TechSpec } from "@/lib/tech-spec";
+import { stackLabel, type Stack } from "@/lib/catalog";
 
 /* ---------------- schemas (Groq strict mode: every field required, empty values instead of optional) ---------------- */
 
@@ -62,6 +64,25 @@ const PlanSchema = z.object({
   })).describe("Every EXTERNAL account or key the v1 features (status \"in\") need to work on real data — none for deferred items. Not the database, auth, hosting or AI model — Architect provides those."),
 });
 
+const AgentPlanSchema = PlanSchema.omit({ screens: true }).extend({
+  trigger: z.object({ kind: z.enum(["chat", "api", "schedule", "slack", "email"]), detail: z.string().describe("Plain words, e.g. 'every weekday at 8:00' or 'when a message arrives in #support'") }),
+  guardrails: z.array(z.string()).describe("2-4 things the agent must never do on its own, plain language"),
+  tests: z.array(z.object({ input: z.string().describe("A realistic example input"), expect: z.string().describe("What a good answer must do, in one sentence") })).describe("2-4 test cases"),
+});
+
+// No min/max here: Groq strict mode strips them from the schema, so the model never sees them; sanitizeTech() bounds sizes.
+const TechSchema = z.object({
+  tables: z.array(z.object({
+    name: z.string().describe("snake_case table name"),
+    purpose: z.string(),
+    access: z.enum(ACCESS).describe("owner: only the creator; team: any signed-in user can read; public_read: anyone can read"),
+    columns: z.array(z.object({ name: z.string().describe("snake_case; do NOT include id, owner_id or created_at — they are added automatically"), type: z.enum(COLUMN_TYPES), nullable: z.boolean(), note: z.string() })),
+  })).describe("Only what v1 needs to store; empty if the app stores nothing"),
+  routes: z.array(z.object({ method: z.enum(METHODS), path: z.string().describe("starts with /api/"), purpose: z.string() })),
+  env: z.array(z.object({ name: z.string().describe("UPPER_SNAKE"), purpose: z.string() })).describe("Only third-party keys the user must provide; not database/auth/agent-runtime vars"),
+  notes: z.array(z.string()).describe("Short technical decisions and trade-offs worth knowing"),
+});
+
 const LooksSchema = z.object({
   looks: z.array(z.object({
     name: z.string().describe("Two-word name for the look, e.g. 'Calm Studio'"),
@@ -103,19 +124,33 @@ Keep titles short. Unused fields must be empty strings or empty arrays.`;
 
 export type Step<T> = T & { live: boolean; usage: Usage[] };
 
-export async function clarify(prompt: string, developer = false): Promise<Step<{ intro: string; questions: Question[] }>> {
-  const r = await structured(QuestionsSchema, "clarify", SYSTEM, `The user wants to build:\n"""${prompt}"""\n\nFirst reason about what is ambiguous or missing. Then ask 2-4 multiple-choice questions that most change what gets built (e.g. which tools/ecosystem, which features in v1, whether to save data, who uses it). Put your recommended option FIRST (do not write "recommended" in labels — the UI marks it), and give every option a short hint.${developer ? "\nThe user is a developer: include one technical question (e.g. agent framework, data store, or auth approach)." : "\nThe user is non-technical: no technical jargon in questions or options."}`, "medium");
+export async function clarify(prompt: string, developer = false, opts: { kind?: "app" | "agent" | "import"; stack?: Stack; framework?: string } = {}): Promise<Step<{ intro: string; questions: Question[] }>> {
+  const agent = opts.kind === "agent";
+  const focus = agent
+    ? "This is a standalone AI agent (no app screens). Ask about: how it is triggered (chat, API, schedule, Slack, email), which tools/data it uses, and what it may do on its own vs. what needs a human's approval."
+    : "Ask about what most changes what gets built (e.g. which tools/ecosystem, which features in v1, whether to save data, who uses it).";
+  const lens = developer
+    ? `The user is a DEVELOPER. Ask 3-4 questions and make at least 2 of them technical, e.g. ${agent ? "tool-calling and API shape, memory/state between runs, rate limits and retries, how results are delivered" : "the data model (what entities and relations), roles and permissions, API/webhook needs, background jobs, environments"}. Technical terms are fine.${opts.stack ? ` They ALREADY chose: ${agent ? "" : stackLabel(opts.stack) + " · "}agents in ${opts.framework ?? "lyzr"} on ${opts.stack.model} — never ask about those again.` : ""}`
+    : "The user is non-technical: ask 2-4 questions, with no technical jargon in questions or options.";
+  const r = await structured(QuestionsSchema, "clarify", SYSTEM, `The user wants to build:\n"""${prompt}"""\n\nFirst reason about what is ambiguous or missing. ${focus} Put your recommended option FIRST (do not write "recommended" in labels — the UI marks it), and give every option a short hint.\n${lens}`, "medium");
   return r ? { ...r.data, live: true, usage: [r.usage] } : { ...fallbackQuestions(prompt), live: false, usage: [] };
 }
 
-export async function makePlan(prompt: string, answers: string, current?: Plan | null, instruction?: string): Promise<Step<Plan>> {
+export async function makePlan(prompt: string, answers: string, current?: Plan | null, instruction?: string, kind: "app" | "agent" | "import" = "app"): Promise<Step<Plan>> {
   const user = [
     `Original request:\n"""${prompt}"""`,
     answers && `User's answers to clarifying questions:\n${answers}`,
     current && `Current plan (JSON):\n${JSON.stringify({ ...current, screens: current.screens.map((s) => ({ name: s.name, purpose: s.purpose, metrics: s.metrics ?? [], rows: s.rows ?? [], action: s.action ?? "" })) })}`,
     instruction && `Revise the plan according to this instruction from the user: "${instruction}"`,
-    "Write the v1 plan.",
+    kind === "agent" ? "This is a STANDALONE AGENT with no app screens: plan its trigger, tools, guardrails and test cases. Write the v1 plan." : "Write the v1 plan.",
   ].filter(Boolean).join("\n\n");
+  if (kind === "agent") {
+    const a = await structured(AgentPlanSchema, "agent_plan", SYSTEM, user, "medium");
+    const plan: Omit<Plan, "estimate"> = a
+      ? { ...a.data, screens: [], agents: a.data.agents.slice(0, 3), guardrails: a.data.guardrails.slice(0, 4), tests: a.data.tests.slice(0, 4) }
+      : fallbackAgentPlan(prompt, current);
+    return { ...plan, estimate: estimate(plan), live: !!a, usage: a ? [a.usage] : [] };
+  }
   const r = await structured(PlanSchema, "plan", SYSTEM, user, "medium");
   const plan = r?.data ?? fallbackPlan(prompt, current, instruction);
   return { ...plan, estimate: estimate(plan), live: !!r, usage: r ? [r.usage] : [] };
@@ -135,6 +170,17 @@ export async function changeApp(plan: Plan, instruction: string): Promise<Step<{
     `Current app (JSON):\n${JSON.stringify({ name: plan.name, agents: plan.agents, connections: plan.connections, screens: plan.screens })}\n\nChange request: "${instruction}"`, "medium");
   if (r) return { ...r.data, live: true, usage: [r.usage] };
   return { summary: "I couldn't apply that change right now — your app is unchanged.", changes: [], screens: plan.screens, clarify: { needed: false, question: "", options: [] }, live: false, usage: [] };
+}
+
+/** Developer view of the plan: data model, API routes and env, fitted to the chosen stack. */
+export async function makeTechSpec(plan: Plan, stack: Stack, framework: string): Promise<Step<{ tech: TechSpec }>> {
+  const r = await structured(TechSchema, "tech", "You are a senior full-stack engineer writing a concise technical spec for a v1. Be concrete and minimal: only tables, routes and keys the plan needs. Use snake_case for tables and columns.",
+    `Stack: ${stackLabel(stack)} · agents in ${framework} on ${stack.model}.\nApp plan:\n${JSON.stringify({ name: plan.name, summary: plan.summary, scope: plan.scope.filter((s) => s.status === "in").map((s) => s.item), screens: plan.screens.map((s) => ({ name: s.name, purpose: s.purpose })), agents: plan.agents, data: plan.data, connections: plan.connections, trigger: plan.trigger })}\n\nWrite the technical spec.`, "low");
+  if (!r) return { tech: fallbackTech(plan.data, stack), live: false, usage: [] };
+  const own = sanitizeTech({ ...r.data, env: r.data.env.map((e) => ({ ...e, provided: false })) });
+  const provided = providedEnv(stack);
+  own.env = [...provided, ...own.env.filter((e) => !provided.some((p) => p.name === e.name))];
+  return { tech: own, live: true, usage: [r.usage] };
 }
 
 /** Three clearly different visual directions for the app, chosen to fit its audience. */

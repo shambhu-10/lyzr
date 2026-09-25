@@ -29,7 +29,9 @@ export default async function Remix({ params }: PageProps<"/remix/[slug]">) {
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Make your own {row.name}</h1>
           <p className="mt-2 text-muted-foreground">{plan.tagline}</p>
           <ul className="mt-5 space-y-2 text-sm">
-            <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" /> {plan.screens.length} screens, ready to edit: {plan.screens.map((s) => s.name).join(", ")}</li>
+            {plan.trigger
+              ? <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" /> Runs from a {plan.trigger.kind} trigger, with {plan.guardrails?.length ?? 0} guardrails and {plan.tests?.length ?? 0} test cases</li>
+              : <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-success" /> {plan.screens.length} screens, ready to edit: {plan.screens.map((s) => s.name).join(", ")}</li>}
             <li className="flex gap-2"><Bot className="mt-0.5 size-4 shrink-0 text-brand" /> {plan.agents.map((a) => a.name).join(", ")}</li>
             {plan.connections.length > 0 && <li className="flex gap-2"><Plug className="mt-0.5 size-4 shrink-0 text-muted-foreground" /> You&apos;ll connect your own: {plan.connections.map((c) => c.name).join(", ")}</li>}
             <li className="flex gap-2"><Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground" /> Nothing from the original owner&apos;s data or accounts is copied.</li>

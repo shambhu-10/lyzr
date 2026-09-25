@@ -41,7 +41,7 @@ export async function importRepo(repo: { full_name: string; name: string; langua
   const slug = `${repo.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 28)}-${crypto.randomUUID().slice(0, 4)}`;
   const { data, error } = await supabase.from("projects").insert({
     name: pretty, slug, kind: "import", stage: "connect", plan, prompt: `Import ${repo.full_name}`,
-    source: { repo: repo.full_name, stack: repo.language ?? "Unknown", framework },
+    source: { repo: repo.full_name, language: repo.language ?? "Unknown", framework },
   }).select("id").single();
   if (error) throw error;
   await supabase.from("messages").insert([

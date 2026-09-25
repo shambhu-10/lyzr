@@ -54,7 +54,7 @@ export function ShareDialog({ project, name, open, onOpenChange, isOwner }: { pr
             </div>
             {link && (
               <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-2 text-xs">
-                <span className="flex-1 truncate font-mono">{link}</span>
+                <span className="min-w-0 flex-1 truncate font-mono">{link}</span>
                 <Button size="icon-xs" variant="ghost" aria-label="Copy invite link" onClick={() => { navigator.clipboard.writeText(link); toast("Copied"); }}><Copy /></Button>
               </div>
             )}
@@ -78,7 +78,7 @@ export function ShareDialog({ project, name, open, onOpenChange, isOwner }: { pr
           )}
         </div>
         <div className="flex items-center gap-2 rounded-lg border p-2 text-xs">
-          <span className="flex-1 truncate font-mono">{origin}/live/{project.slug}</span>
+          <span className="min-w-0 flex-1 truncate font-mono">{origin}/live/{project.slug}</span>
           <Button size="xs" variant="outline" onClick={() => { navigator.clipboard.writeText(`${origin}/live/${project.slug}`); toast("Link copied"); }}>Copy public link</Button>
         </div>
         <p className="-mt-2 text-[11px] text-muted-foreground">{project.stage === "live" ? "Your live app — anyone with this link can use it." : "The public link works once the project is shipped to production."}</p>

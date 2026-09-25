@@ -1,5 +1,8 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { Editable } from "./editable";
+import { TechSpecView } from "./tech-spec";
+import type { Stack } from "@/lib/catalog";
 import { Bot, Check, Clock, Database, Loader2, Lock, Pencil, Plug, Plus, Sparkles, Undo2, Wallet, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -9,38 +12,12 @@ import { estimate } from "@/lib/ai/estimate";
 import type { Mode, Plan } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** Click-to-edit text. Enter (or blur) commits, Esc cancels. */
-function Editable({ value, onChange, editable, multiline, className, placeholder, label }: {
-  value: string; onChange: (v: string) => void; editable: boolean; multiline?: boolean; className?: string; placeholder?: string; label: string;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-  const ref = useRef<HTMLTextAreaElement & HTMLInputElement>(null);
-  useEffect(() => { if (editing) ref.current?.focus(); }, [editing]);
-  if (!editable) return <span className={className}>{value || <span className="text-muted-foreground">{placeholder}</span>}</span>;
-  if (!editing)
-    return (
-      <button type="button" aria-label={`Edit ${label}`} onClick={() => { setDraft(value); setEditing(true); }}
-        className={cn("-mx-1 rounded px-1 text-left decoration-dashed decoration-foreground/25 underline-offset-4 transition hover:bg-brand-soft/60 hover:underline", className)}>
-        {value || <span className="text-muted-foreground">{placeholder}</span>}
-      </button>
-    );
-  const commit = () => { setEditing(false); if (draft.trim() !== value) onChange(draft.trim()); };
-  const common = {
-    ref, value: draft, "aria-label": label, placeholder,
-    onChange: (e: React.ChangeEvent<HTMLInputElement & HTMLTextAreaElement>) => setDraft(e.target.value),
-    onBlur: commit,
-    onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Escape") setEditing(false); if (e.key === "Enter" && (!multiline || e.metaKey || e.ctrlKey)) { e.preventDefault(); commit(); } },
-    className: cn("w-full rounded-md border border-brand/40 bg-background px-1.5 py-0.5 outline-none ring-3 ring-brand/15", className),
-  };
-  return multiline ? <textarea rows={3} {...common} /> : <input {...common} />;
-}
-
-export function PlanPanel({ plan, mode, framework, busy, canApprove, canEdit, onApprove, onAddBack, onSave, actual, lookSlot }: {
+export function PlanPanel({ plan, mode, framework, busy, canApprove, canEdit, onApprove, onAddBack, onSave, actual, lookSlot, projectId, stack, onPlan, onStack }: {
   plan: Plan | null; mode: Mode; framework: string; busy: boolean; canApprove: boolean; canEdit: boolean; actual?: { spent: number; seconds?: number }; lookSlot?: React.ReactNode;
+  projectId: string; stack: Stack; onPlan: (p: Plan) => void; onStack: (s: Stack, framework: string) => Promise<void>;
   onApprove: () => void; onAddBack: (item: string) => void; onSave: (p: Plan, via: "inline" | "agents-md") => Promise<boolean>;
 }) {
-  const [view, setView] = useState<"readable" | "md">("readable");
+  const [view, setView] = useState<"readable" | "tech" | "md">("readable");
   const [md, setMd] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState<Plan[]>([]);
@@ -67,7 +44,7 @@ export function PlanPanel({ plan, mode, framework, busy, canApprove, canEdit, on
   const inV1 = plan.scope.map((s, i) => ({ s, i })).filter((x) => x.s.status === "in");
   const later = plan.scope.map((s, i) => ({ s, i })).filter((x) => x.s.status === "later");
   const setScope = (i: number, patch: Partial<Plan["scope"][number]>) => edit("scope", plan.scope.map((s, k) => (k === i ? { ...s, ...patch } : s)));
-  const agentsMd = filesFor(plan, framework)[0].content;
+  const agentsMd = filesFor(plan, framework, stack)[0].content;
 
   return (
     <div className="@container mx-auto max-w-3xl space-y-8 p-6 md:p-10">
@@ -85,13 +62,16 @@ export function PlanPanel({ plan, mode, framework, busy, canApprove, canEdit, on
           {mode === "developer" && (
             <div className="flex rounded-lg bg-muted p-0.5 text-xs">
               <button onClick={() => setView("readable")} className={cn("rounded-md px-2.5 py-1", view === "readable" && "bg-background shadow-sm")}>Readable</button>
+              <button onClick={() => setView("tech")} className={cn("rounded-md px-2.5 py-1", view === "tech" && "bg-background text-dev shadow-sm")}>Tech spec</button>
               <button onClick={() => { setView("md"); setMd(null); }} className={cn("rounded-md px-2.5 py-1", view === "md" && "bg-background shadow-sm")}>AGENTS.md</button>
             </div>
           )}
         </div>
       </div>
 
-      {view === "md" && mode === "developer" ? (
+      {view === "tech" && mode === "developer" ? (
+        <TechSpecView projectId={projectId} plan={plan} stack={stack} framework={framework} canEdit={canEdit} onPlan={onPlan} onSave={save} onStack={onStack} />
+      ) : view === "md" && mode === "developer" ? (
         <div className="space-y-3">
           <textarea value={md ?? agentsMd} onChange={(e) => setMd(e.target.value)} readOnly={!canEdit} spellCheck={false} aria-label="AGENTS.md"
             className="h-[480px] w-full resize-y rounded-xl bg-[oklch(0.18_0.01_260)] p-5 font-mono text-xs leading-6 text-[oklch(0.9_0_0)] outline-none focus:ring-3 focus:ring-dev/30" />
@@ -154,27 +134,29 @@ export function PlanPanel({ plan, mode, framework, busy, canApprove, canEdit, on
             </div>
           </section>
 
+          {plan.trigger ? <AgentRun plan={plan} canEdit={canEdit} edit={edit} /> : (
           <section>
-            <h3 className="text-sm font-semibold">Screens</h3>
-            <div className="mt-3 grid gap-3 @lg:grid-cols-3">
-              {plan.screens.map((s, i) => (
-                <div key={i} className="group relative overflow-hidden rounded-xl border bg-card">
-                  {canEdit && plan.screens.length > 1 && <button aria-label={`Remove ${s.name}`} onClick={() => edit("screens", plan.screens.filter((_, k) => k !== i))} className="absolute top-1.5 right-1.5 z-10 rounded bg-background/80 p-0.5 text-muted-foreground opacity-0 group-hover:opacity-100"><X className="size-3.5" /></button>}
-                  <div className="grid h-20 grid-cols-[1fr_3fr] gap-1.5 bg-muted/60 p-2">
-                    <div className="rounded bg-background/80" />
-                    <div className="space-y-1.5"><div className="h-2 w-1/2 rounded bg-foreground/15" /><div className={cn("h-9 rounded bg-background/80", i === 1 && "grid grid-cols-2 gap-1 bg-transparent")}>{i === 1 && <><div className="rounded bg-background/80" /><div className="rounded bg-brand-soft" /></>}</div></div>
+              <h3 className="text-sm font-semibold">Screens</h3>
+              <div className="mt-3 grid gap-3 @lg:grid-cols-3">
+                {plan.screens.map((s, i) => (
+                  <div key={i} className="group relative overflow-hidden rounded-xl border bg-card">
+                    {canEdit && plan.screens.length > 1 && <button aria-label={`Remove ${s.name}`} onClick={() => edit("screens", plan.screens.filter((_, k) => k !== i))} className="absolute top-1.5 right-1.5 z-10 rounded bg-background/80 p-0.5 text-muted-foreground opacity-0 group-hover:opacity-100"><X className="size-3.5" /></button>}
+                    <div className="grid h-20 grid-cols-[1fr_3fr] gap-1.5 bg-muted/60 p-2">
+                      <div className="rounded bg-background/80" />
+                      <div className="space-y-1.5"><div className="h-2 w-1/2 rounded bg-foreground/15" /><div className={cn("h-9 rounded bg-background/80", i === 1 && "grid grid-cols-2 gap-1 bg-transparent")}>{i === 1 && <><div className="rounded bg-background/80" /><div className="rounded bg-brand-soft" /></>}</div></div>
+                    </div>
+                    <div className="space-y-0.5 p-3">
+                      <div className="text-sm font-medium"><Editable label="screen name" value={s.name} onChange={(v) => edit("screens", plan.screens.map((x, k) => (k === i ? { ...x, name: v } : x)))} editable={canEdit} /></div>
+                      <div className="text-xs text-muted-foreground"><Editable label="screen purpose" value={s.purpose} onChange={(v) => edit("screens", plan.screens.map((x, k) => (k === i ? { ...x, purpose: v } : x)))} editable={canEdit} /></div>
+                    </div>
                   </div>
-                  <div className="space-y-0.5 p-3">
-                    <div className="text-sm font-medium"><Editable label="screen name" value={s.name} onChange={(v) => edit("screens", plan.screens.map((x, k) => (k === i ? { ...x, name: v } : x)))} editable={canEdit} /></div>
-                    <div className="text-xs text-muted-foreground"><Editable label="screen purpose" value={s.purpose} onChange={(v) => edit("screens", plan.screens.map((x, k) => (k === i ? { ...x, purpose: v } : x)))} editable={canEdit} /></div>
-                  </div>
-                </div>
-              ))}
-              {canEdit && plan.screens.length < 8 && (
-                <button onClick={() => edit("screens", [...plan.screens, { name: "New screen", purpose: "What this screen is for" }])} className="grid min-h-32 place-items-center rounded-xl border border-dashed text-sm text-muted-foreground hover:bg-muted/50"><span className="flex items-center gap-1"><Plus className="size-4" /> Add screen</span></button>
-              )}
-            </div>
-          </section>
+                ))}
+                {canEdit && plan.screens.length < 8 && (
+                  <button onClick={() => edit("screens", [...plan.screens, { name: "New screen", purpose: "What this screen is for" }])} className="grid min-h-32 place-items-center rounded-xl border border-dashed text-sm text-muted-foreground hover:bg-muted/50"><span className="flex items-center gap-1"><Plus className="size-4" /> Add screen</span></button>
+                )}
+              </div>
+            </section>
+          )}
 
           <section className="grid gap-3 @lg:grid-cols-2">
             <div className="rounded-xl border bg-card p-4">
@@ -237,5 +219,63 @@ export function PlanPanel({ plan, mode, framework, busy, canApprove, canEdit, on
         ) : <span className="text-xs text-muted-foreground">Plan approved ✓ — you can still change it by chatting.</span>}
       </div>
     </div>
+  );
+}
+
+const TRIGGERS = [
+  { id: "chat", label: "Chat widget", hint: "People message it on your site or in the app" },
+  { id: "api", label: "API endpoint", hint: "Your code calls it over HTTP" },
+  { id: "schedule", label: "Schedule", hint: "Runs on a timer, e.g. every morning" },
+  { id: "slack", label: "Slack", hint: "Replies when mentioned or on new messages" },
+  { id: "email", label: "Email", hint: "Runs when an email arrives" },
+] as const;
+
+/** Agent projects: how it's triggered, what it must never do, and the cases it must pass (instead of screens). */
+function AgentRun({ plan, canEdit, edit }: { plan: Plan; canEdit: boolean; edit: <K extends keyof Plan>(key: K, value: Plan[K]) => void }) {
+  const t = plan.trigger!;
+  const guardrails = plan.guardrails ?? [];
+  const tests = plan.tests ?? [];
+  return (
+    <>
+      <section>
+        <h3 className="text-sm font-semibold">How it runs</h3>
+        <p className="mt-1 text-xs text-muted-foreground">An agent has no screens — it starts from a trigger and hands back its result.</p>
+        <div className="mt-3 grid gap-2 @lg:grid-cols-5">
+          {TRIGGERS.map((x) => (
+            <button key={x.id} disabled={!canEdit} onClick={() => edit("trigger", { ...t, kind: x.id })}
+              className={cn("rounded-xl border bg-card p-3 text-left text-xs transition disabled:cursor-default", t.kind === x.id ? "border-brand bg-brand-soft/50 ring-3 ring-brand/15" : canEdit && "hover:bg-muted/60")}>
+              <span className="block text-sm font-medium">{x.label}</span><span className="text-muted-foreground">{x.hint}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 text-sm"><span className="text-muted-foreground">When: </span><Editable label="trigger detail" value={t.detail} editable={canEdit} onChange={(v) => edit("trigger", { ...t, detail: v })} /></div>
+      </section>
+      <section className="grid gap-3 @lg:grid-cols-2">
+        <div className="rounded-xl border bg-card p-4">
+          <div className="text-sm font-semibold">Guardrails — it will never…</div>
+          <ul className="mt-2 space-y-1.5 text-sm">
+            {guardrails.map((g, i) => (
+              <li key={i} className="group flex items-start gap-2"><X className="mt-0.5 size-3.5 shrink-0 text-destructive" /><span className="flex-1"><Editable label="guardrail" value={g} editable={canEdit} onChange={(v) => edit("guardrails", guardrails.map((x, k) => (k === i ? v : x)))} /></span>
+                {canEdit && <button aria-label="Remove guardrail" onClick={() => edit("guardrails", guardrails.filter((_, k) => k !== i))} className="text-muted-foreground opacity-0 group-hover:opacity-100"><X className="size-3.5" /></button>}</li>
+            ))}
+          </ul>
+          {canEdit && <button onClick={() => edit("guardrails", [...guardrails, "Do something risky without asking"])} className="mt-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><Plus className="size-3" /> Add guardrail</button>}
+        </div>
+        <div className="rounded-xl border bg-card p-4">
+          <div className="text-sm font-semibold">Test cases it must pass</div>
+          <ul className="mt-2 space-y-2 text-sm">
+            {tests.map((c, i) => (
+              <li key={i} className="group rounded-lg bg-muted/50 p-2">
+                <div className="flex items-start justify-between gap-2"><span className="text-xs text-muted-foreground">Input</span>{canEdit && <button aria-label="Remove test" onClick={() => edit("tests", tests.filter((_, k) => k !== i))} className="text-muted-foreground opacity-0 group-hover:opacity-100"><X className="size-3.5" /></button>}</div>
+                <Editable label="test input" value={c.input} editable={canEdit} onChange={(v) => edit("tests", tests.map((x, k) => (k === i ? { ...x, input: v } : x)))} />
+                <div className="mt-1 text-xs text-muted-foreground">Should: <Editable label="expected result" value={c.expect} editable={canEdit} onChange={(v) => edit("tests", tests.map((x, k) => (k === i ? { ...x, expect: v } : x)))} /></div>
+              </li>
+            ))}
+          </ul>
+          {canEdit && <button onClick={() => edit("tests", [...tests, { input: "A new example request", expect: "What a good answer does" }])} className="mt-3 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><Plus className="size-3" /> Add test case</button>}
+          <p className="mt-2 text-[11px] text-muted-foreground">These become the agent&apos;s evals — run them in the Test step.</p>
+        </div>
+      </section>
+    </>
   );
 }

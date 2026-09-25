@@ -1,6 +1,7 @@
 "use server";
 import { requireUser } from "@/lib/supabase/server";
-import { changeApp, clarify, designLooks, generateScreen, makePlan } from "@/lib/ai/planner";
+import { changeApp, clarify, designLooks, generateScreen, makePlan, makeTechSpec } from "@/lib/ai/planner";
+import { providedEnv, sanitizeTech } from "@/lib/tech-spec";
 import { llmEnabled } from "@/lib/ai/llm";
 import { filesFor } from "@/lib/script/files";
 import { logUsage } from "@/lib/usage-log";
@@ -8,6 +9,7 @@ import { diffStats } from "@/lib/diff";
 import { estimate } from "@/lib/ai/estimate";
 import type { Plan, Project, Stage } from "@/lib/types";
 import { ACCENTS, FONTS, RADII, SIDEBARS, type AppTheme } from "@/lib/theme";
+import { toStack, type Stack } from "@/lib/catalog";
 import { applyTextEdit } from "@/lib/plan-edit";
 
 export type Msg = { id: string; role: "user" | "assistant"; kind: string; content: string; meta: Record<string, unknown> | null; created_at: string };
@@ -30,7 +32,8 @@ export async function askQuestions(id: string, developer = false) {
   const { supabase, project } = await load(id);
   const { data: existing } = await supabase.from("messages").select("id").eq("project_id", id).eq("kind", "questions").limit(1);
   if (existing?.length) return null;
-  const q = await clarify(project.prompt, developer);
+  const lens = project.source?.lens ? project.source.lens === "developer" : developer; // the choice made in the prompt box wins
+  const q = await clarify(project.prompt, lens, { kind: project.kind, stack: lens ? toStack(project.source?.stack) : undefined, framework: project.source?.framework });
   await logUsage(supabase, id, "questions", q.usage);
   return say(supabase, id, { role: "assistant", kind: "questions", content: q.intro, meta: { questions: q.questions, live: q.live } });
 }
@@ -38,7 +41,7 @@ export async function askQuestions(id: string, developer = false) {
 export async function submitAnswers(id: string, answers: string) {
   const { supabase, project } = await load(id);
   const userMsg = await say(supabase, id, { role: "user", kind: "answers", content: answers });
-  const plan = await makePlan(project.prompt, answers);
+  const plan = await makePlan(project.prompt, answers, null, undefined, project.kind);
   const { live, usage, ...clean } = plan;
   await logUsage(supabase, id, "plan", usage);
   // First plan names the product — give the public URL that name too (it's not live yet, so nothing breaks).
@@ -47,7 +50,7 @@ export async function submitAnswers(id: string, answers: string) {
   const later = clean.scope.filter((s) => s.status === "later").length;
   const reply = await say(supabase, id, {
     role: "assistant", kind: "plan",
-    content: `Here's the plan for **${clean.name}**: ${clean.screens.length} screens and ${clean.agents.length} agent${clean.agents.length > 1 ? "s" : ""}.${later ? ` I've kept ${later} thing${later > 1 ? "s" : ""} you asked for as “later” so v1 ships fast — you can add ${later > 1 ? "them" : "it"} back anytime.` : ""} Review it on the right, then approve when you're happy.`,
+    content: `Here's the plan for **${clean.name}**: ${clean.trigger ? `an agent that runs from a ${clean.trigger.kind} trigger, with ${clean.guardrails?.length ?? 0} guardrails and ${clean.tests?.length ?? 0} test cases` : `${clean.screens.length} screens and ${clean.agents.length} agent${clean.agents.length > 1 ? "s" : ""}`}.${later ? ` I've kept ${later} thing${later > 1 ? "s" : ""} you asked for as “later” so v1 ships fast — you can add ${later > 1 ? "them" : "it"} back anytime.` : ""} Review it on the right, then approve when you're happy.`,
     meta: { live },
   });
   return { plan: clean as Plan, slug, messages: [userMsg, reply] };
@@ -56,11 +59,12 @@ export async function submitAnswers(id: string, answers: string) {
 export async function revisePlan(id: string, instruction: string) {
   const { supabase, project } = await load(id);
   const userMsg = await say(supabase, id, { role: "user", kind: "text", content: instruction });
-  const plan = await makePlan(project.prompt, "", project.plan, instruction);
+  const plan = await makePlan(project.prompt, "", project.plan, instruction, project.kind);
   const { live, usage, ...clean } = plan;
   await logUsage(supabase, id, "revise", usage);
   // Keep already-built screens' layouts when the plan still has the same screen.
   clean.screens = clean.screens.map((s) => ({ ...s, blocks: project.plan?.screens.find((o) => o.name === s.name)?.blocks }));
+  Object.assign(clean, { theme: project.plan?.theme, looks: project.plan?.looks, tech: project.plan?.tech }); // keep the chosen look and the spec (regenerate from Tech spec)
   await supabase.from("projects").update({ plan: clean, name: clean.name, updated_at: touch() }).eq("id", id);
   const reply = await say(supabase, id, { role: "assistant", kind: "text", content: "Updated the plan on the right and recalculated the estimate.", meta: { live } });
   return { plan: clean as Plan, messages: [userMsg, reply] };
@@ -84,6 +88,7 @@ export async function generateUI(id: string) {
   const { supabase, project } = await load(id);
   if (!project.plan) throw new Error("No plan");
   const plan = project.plan;
+  if (!plan.screens.length) return { plan, live: true }; // agent projects have no screens
   const results = await Promise.all(plan.screens.map((s, i) => (s.blocks?.length ? null : generateScreen(plan, i))));
   const next: Plan = { ...plan, screens: plan.screens.map((s, i) => ({ ...s, blocks: results[i]?.blocks ?? s.blocks })) };
   await logUsage(supabase, id, "screen", results.flatMap((r) => r?.usage ?? []));
@@ -95,18 +100,19 @@ export async function finishBuild(id: string, seconds?: number) {
   const { supabase, project } = await load(id);
   if (!project.plan) throw new Error("No plan");
   const framework = (project.source as { framework?: string } | null)?.framework ?? "lyzr";
-  const files = filesFor(project.plan, framework);
+  const stack = toStack(project.source?.stack);
+  const files = filesFor(project.plan, framework, stack);
   await supabase.from("files").upsert(files.map((f) => ({ project_id: id, path: f.path, content: f.content, updated_at: touch() })), { onConflict: "project_id,path" });
   const { count } = await supabase.from("agents").select("id", { count: "exact", head: true }).eq("project_id", id);
   if (!count)
     await supabase.from("agents").insert(project.plan.agents.map((a) => ({
-      project_id: id, name: a.name, role: a.role, framework, tools: a.tools, model: "openai/gpt-oss-120b",
+      project_id: id, name: a.name, role: a.role, framework, tools: a.tools, model: stack.model, evals: (project.plan?.tests ?? []).map((t) => ({ input: t.input, expect: t.expect })),
       instructions: `${a.role}. Ground every answer in the provided data; say what's missing instead of guessing. Never send or post anything without the user's approval.`,
     })));
   await supabase.from("versions").insert({ project_id: id, label: "First build", snapshot: { files, plan: project.plan, summary: `Built ${project.plan.screens.length} screens and ${project.plan.agents.length} agent${project.plan.agents.length > 1 ? "s" : ""}.` } });
   const source = { ...(project.source ?? {}), build: { seconds: Math.round(seconds ?? 0), at: touch() } };
   await supabase.from("projects").update({ stage: "test", source, updated_at: touch() }).eq("id", id);
-  const message = await say(supabase, id, { role: "assistant", kind: "text", content: `Build finished. ${files.length} files, ${project.plan.agents.length} agent${project.plan.agents.length > 1 ? "s" : ""}, 1 issue fixed for free. Next, I'll test it.` });
+  const message = await say(supabase, id, { role: "assistant", kind: "text", content: `Build finished. ${files.length} files, ${project.plan.agents.length} agent${project.plan.agents.length > 1 ? "s" : ""}${project.plan.screens.length ? ", 1 issue fixed for free" : ""}. Next, I'll test it.` });
   const { data: agents } = await supabase.from("agents").select("*").eq("project_id", id).order("created_at");
   return { files, agents: agents ?? [], message };
 }
@@ -166,7 +172,7 @@ export async function quickChange(id: string, text: string) {
   const plan: Plan = { ...project.plan, screens: r.screens };
   const framework = (project.source as { framework?: string } | null)?.framework ?? "lyzr";
   const { data: before } = await supabase.from("files").select("path, content").eq("project_id", id);
-  const generated = filesFor(plan, framework).filter((f) => f.path.startsWith("app/"));
+  const generated = filesFor(plan, framework, toStack(project.source?.stack)).filter((f) => f.role === "screen" || f.path === "app/layout.tsx" || f.path === "src/main.tsx");
   const changed = generated.filter((f) => before?.find((b) => b.path === f.path)?.content !== f.content);
   if (changed.length) await supabase.from("files").upsert(changed.map((f) => ({ project_id: id, path: f.path, content: f.content, updated_at: touch() })), { onConflict: "project_id,path" });
   await supabase.from("projects").update({ plan, updated_at: touch() }).eq("id", id);
@@ -195,8 +201,14 @@ export async function savePlan(id: string, next: Plan, via: "inline" | "agents-m
     agents: next.agents.slice(0, 6).map((a) => ({ name: clip(a.name, 60), role: clip(a.role, 300), tools: (a.tools ?? []).slice(0, 10).map((t) => clip(t, 60)) })).filter((a) => a.name),
     data: next.data.slice(0, 20).map((d) => clip(d, 120)).filter(Boolean),
     connections: next.connections.slice(0, 12),
+    ...(next.tech ? { tech: sanitizeTech(next.tech) } : {}),
+    ...(project.kind === "agent" ? {
+      trigger: next.trigger && ["chat", "api", "schedule", "slack", "email"].includes(next.trigger.kind) ? { kind: next.trigger.kind, detail: clip(next.trigger.detail, 200) } : project.plan.trigger,
+      guardrails: (next.guardrails ?? []).slice(0, 8).map((g) => clip(g, 200)).filter(Boolean),
+      tests: (next.tests ?? []).slice(0, 8).map((t) => ({ input: clip(t.input, 500), expect: clip(t.expect, 300) })).filter((t) => t.input),
+    } : {}),
   };
-  if (!plan.screens.length || !plan.agents.length) return { error: "A plan needs at least one screen and one agent." };
+  if ((!plan.screens.length && project.kind !== "agent") || !plan.agents.length) return { error: project.kind === "agent" ? "An agent project needs at least one agent." : "A plan needs at least one screen and one agent." };
   plan.estimate = estimate(plan);
   await supabase.from("projects").update({ plan, name: plan.name, updated_at: touch() }).eq("id", id);
   await supabase.from("versions").insert({ project_id: id, label: via === "inline" ? "Edited the plan by hand" : "Edited AGENTS.md", snapshot: { plan, summary: "Plan edited manually." } });
@@ -208,7 +220,7 @@ const built = (p: Project) => !["plan", "connect"].includes(p.stage);
 /** Rewrite the generated app/ files after a copy or look change, so Developer view matches the preview. */
 async function syncAppFiles(supabase: Awaited<ReturnType<typeof load>>["supabase"], project: Project, plan: Plan) {
   const framework = (project.source as { framework?: string } | null)?.framework ?? "lyzr";
-  const files = filesFor(plan, framework).filter((f) => f.path.startsWith("app/"));
+  const files = filesFor(plan, framework, toStack(project.source?.stack)).filter((f) => f.role === "screen" || f.path === "app/layout.tsx" || f.path === "src/main.tsx");
   await supabase.from("files").upsert(files.map((f) => ({ project_id: project.id, path: f.path, content: f.content, updated_at: touch() })), { onConflict: "project_id,path" });
 }
 
@@ -247,4 +259,29 @@ export async function editText(id: string, path: string, value: string) {
   const label = `Edited “${clip(r.before, 30)}” → “${clip(value.trim(), 30)}”`;
   const version = built(project) ? await saveVersion(supabase, id, r.plan, label, { summary: label }) : null;
   return { plan: r.plan, version };
+}
+
+/** Developer view: a technical spec (data model, routes, env) fitted to the chosen stack. Cached on the plan. */
+export async function suggestTech(id: string, fresh = false) {
+  const { supabase, project } = await load(id);
+  if (!project.plan) return { error: "No plan yet." };
+  if (project.plan.tech && !fresh) return { plan: project.plan };
+  const r = await makeTechSpec(project.plan, toStack(project.source?.stack), project.source?.framework ?? "lyzr");
+  await logUsage(supabase, id, "tech", r.usage);
+  const plan: Plan = { ...project.plan, tech: r.tech };
+  await supabase.from("projects").update({ plan, updated_at: touch() }).eq("id", id);
+  return { plan, live: r.live };
+}
+
+/** Change stack / framework before the build. After the build it's locked (the code already exists). */
+export async function setStack(id: string, next: Stack, framework?: string) {
+  const { supabase, project } = await load(id);
+  if (built(project)) return { error: "The stack is locked after the build — start a remix to try another stack." };
+  const stack = toStack(next);
+  const fw = framework && ["lyzr", "langgraph", "crewai", "openai-agents", "adk", "mastra"].includes(framework) ? framework : project.source?.framework ?? "lyzr";
+  const source = { ...(project.source ?? {}), stack, framework: fw };
+  // Provisioned env vars depend on the stack; the data model, routes and the user's own keys stay.
+  const plan = project.plan?.tech ? { ...project.plan, tech: { ...project.plan.tech, env: [...providedEnv(stack), ...project.plan.tech.env.filter((e) => !e.provided)] } } : project.plan;
+  await supabase.from("projects").update({ source, plan, updated_at: touch() }).eq("id", id);
+  return { source, plan };
 }

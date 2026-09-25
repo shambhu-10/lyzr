@@ -5,6 +5,7 @@ import { agentReply, runAgentTask, runEval, type Turn } from "@/lib/ai/agent-cha
 import { sampleContext } from "@/lib/sample-data";
 import { logUsage } from "@/lib/usage-log";
 import type { Plan } from "@/lib/types";
+import { toStack } from "@/lib/catalog";
 
 export type EvalCase = { input: string; expect: string; pass?: boolean; reason?: string; output?: string };
 
@@ -27,16 +28,17 @@ export async function runBlockAgent(input: { projectId?: string; slug?: string; 
   const supabase = await createClient();
   let plan: Plan | null = null;
   let projectId: string | null = null;
+  let model: string | undefined; // live visitors (by slug) run on the default model — live_project() doesn't expose settings
   if (input.projectId) {
-    const { data } = await supabase.from("projects").select("id, plan").eq("id", input.projectId).single();
-    plan = (data?.plan as Plan) ?? null; projectId = data?.id ?? null;
+    const { data } = await supabase.from("projects").select("id, plan, source").eq("id", input.projectId).single();
+    plan = (data?.plan as Plan) ?? null; projectId = data?.id ?? null; model = toStack(data?.source?.stack).model;
   } else if (input.slug) {
     const { data } = await supabase.rpc("live_project", { p_slug: input.slug });
     plan = (data?.[0]?.plan as Plan) ?? null;
   }
   if (!plan) throw new Error("App not found");
   const a = plan.agents.find((x) => x.name === input.agent) ?? plan.agents[0];
-  const r = await runAgentTask({ name: a.name, instructions: `${a.role}. If a selectedItem is provided, work only on that item. Never send, post or delete anything; produce drafts for the user to approve.` }, task, context);
+  const r = await runAgentTask({ name: a.name, model, instructions: `${a.role}. If a selectedItem is provided, work only on that item. Never send, post or delete anything; produce drafts for the user to approve.` }, task, context);
   if (projectId) await logUsage(supabase, projectId, "agent", [r.usage]);
   return { text: r.text, live: r.live };
 }

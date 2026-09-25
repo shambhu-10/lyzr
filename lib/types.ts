@@ -1,4 +1,6 @@
 import type { AppTheme } from "./theme";
+import type { Stack } from "./catalog";
+import type { TechSpec } from "./tech-spec";
 export type Mode = "builder" | "developer";
 export type Stage = "plan" | "connect" | "build" | "test" | "ship" | "live";
 export const STAGES: { id: Exclude<Stage, "live">; label: string }[] = [
@@ -38,6 +40,12 @@ export type Plan = {
   estimate: { credits: number; minutes: number };
   theme?: AppTheme;
   looks?: AppTheme[];
+  /** Developer view: data model, routes, env (lib/tech-spec.ts). */
+  tech?: TechSpec;
+  /** Agent projects only: how the agent runs, what it must never do, and cases it must pass. */
+  trigger?: { kind: "chat" | "api" | "schedule" | "slack" | "email"; detail: string };
+  guardrails?: string[];
+  tests?: { input: string; expect: string }[];
 };
 
 export type Project = {
@@ -55,7 +63,7 @@ export type Project = {
   plan: Plan | null;
   connections: Record<string, "connected" | "sample">;
   demo_data: boolean;
-  source: { repo?: string; stack?: string; framework?: string; template?: boolean; remixed_from?: string; build?: { seconds: number; at: string } } | null;
+  source: { repo?: string; language?: string; stack?: Stack; framework?: string; template?: boolean; remixed_from?: string; lens?: Mode; build?: { seconds: number; at: string } } | null;
   created_at: string;
   updated_at: string;
 };

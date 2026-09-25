@@ -2,6 +2,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/supabase/server";
+import { FRAMEWORKS, toStack } from "@/lib/catalog";
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32) || "project";
@@ -17,12 +18,16 @@ export async function createProject(form: FormData) {
   const prompt = String(form.get("prompt") ?? "").trim().slice(0, 4000);
   if (!prompt) return;
   const kind = form.get("kind") === "agent" ? "agent" : "app";
-  const framework = String(form.get("framework") ?? "lyzr");
+  const fw = String(form.get("framework") ?? "lyzr");
+  const framework = FRAMEWORKS.some((f) => f.id === fw) ? fw : "lyzr";
+  const lens = form.get("lens") === "developer" ? "developer" : "builder";
+  let stack = toStack(null);
+  try { stack = toStack(JSON.parse(String(form.get("stack") ?? "{}"))); } catch {}
   const template = form.get("template") === "1"; // templates skip the questions and go straight to a plan
   const name = draftName(prompt);
   const { data, error } = await supabase
     .from("projects")
-    .insert({ name, prompt, kind, slug: `${slugify(name)}-${crypto.randomUUID().slice(0, 4)}`, source: { framework, template } })
+    .insert({ name, prompt, kind, slug: `${slugify(name)}-${crypto.randomUUID().slice(0, 4)}`, source: { framework, template, lens, stack } })
     .select("id")
     .single();
   if (error) throw error;

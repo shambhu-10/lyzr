@@ -98,3 +98,21 @@ export function fallbackLooks(): AppTheme[] {
     { name: "Friendly Studio", why: "Bright and approachable — for customers and newcomers.", accent: "coral", radius: "round", font: "sans", sidebar: "tint" },
   ];
 }
+
+export function fallbackAgentPlan(prompt: string, current?: Plan | null): Omit<Plan, "estimate"> {
+  if (current) return current;
+  const title = prompt.replace(/^(build|create|make)( me)?( an?| the)?\s+/i, "").split(/\s+/).slice(0, 3).join(" ");
+  return {
+    name: (title.charAt(0).toUpperCase() + title.slice(1)) || "New Agent",
+    tagline: "An AI agent that does one job well.",
+    summary: `A standalone agent for: ${prompt}`,
+    scope: [{ item: "Core task from your description", status: "in", reason: "" }, { item: "Acting without review", status: "later", reason: "Starts with drafts you approve; automate once it's proven." }],
+    screens: [],
+    agents: [{ name: "Task Agent", role: "Handles the task described, grounded in the data it is given", tools: [] }],
+    data: [],
+    connections: [],
+    trigger: { kind: "chat", detail: "when someone sends it a message" },
+    guardrails: ["Send, post or delete anything without a person approving it", "Make up facts that aren't in its data"],
+    tests: [{ input: "A typical request for this task", expect: "Answers the request using only the provided data" }, { input: "A request outside its job", expect: "Politely says it can't help with that" }],
+  };
+}

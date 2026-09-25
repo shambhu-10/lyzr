@@ -4,6 +4,7 @@ import { GitFork } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { AppPreview } from "@/components/app-preview/app-preview";
 import { LogoMark } from "@/components/logo";
+import { LiveAgent } from "@/components/agents/live-agent";
 import type { Plan } from "@/lib/types";
 
 export async function generateMetadata({ params }: PageProps<"/live/[slug]">) {
@@ -23,11 +24,15 @@ export default async function LiveApp({ params }: PageProps<"/live/[slug]">) {
   void supabase.rpc("bump_view", { p_slug: slug }).then(({ error }) => error && console.error("bump_view:", error.message));
   return (
     <div className="flex min-h-screen flex-col bg-muted">
-      <div className="flex flex-1 flex-col p-0 sm:p-4 [&>div]:flex-1"><AppPreview plan={row.plan} revealed={row.plan.screens.length} demo={row.demo_data} slug={slug} /></div>
-      <div className="mx-auto mb-3 flex items-center overflow-hidden rounded-full bg-black/85 text-[11px] text-white shadow-lg">
-        <Link href="/" className="flex items-center gap-1.5 py-1.5 pr-2.5 pl-2 hover:bg-white/10"><LogoMark className="size-4 [&_path]:stroke-black [&_rect]:fill-white" /> Made with Architect</Link>
-        <Link href={`/remix/${slug}`} className="flex items-center gap-1 border-l border-white/20 py-1.5 pr-3 pl-2.5 hover:bg-white/10"><GitFork className="size-3" /> Remix</Link>
+      <div className="sticky top-0 z-30 flex h-10 items-center justify-between gap-3 border-b bg-background/90 px-3 text-xs backdrop-blur sm:px-4">
+        <Link href="/" className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground"><LogoMark className="size-5" /> Made with <b className="font-semibold text-foreground">Architect</b></Link>
+        <Link href={`/remix/${slug}`} className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-1 font-medium text-primary-foreground hover:opacity-90"><GitFork className="size-3" /> Remix this app</Link>
       </div>
+      {row.plan.trigger ? (
+        <div className="grid flex-1 place-items-center p-4"><LiveAgent plan={row.plan} slug={slug} /></div>
+      ) : (
+        <div className="flex flex-1 flex-col p-0 sm:p-4 [&>div]:flex-1"><AppPreview plan={row.plan} revealed={row.plan.screens.length} demo={row.demo_data} slug={slug} /></div>
+      )}
     </div>
   );
 }
