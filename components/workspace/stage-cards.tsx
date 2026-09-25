@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConsentDialog } from "@/components/connect/consent-dialog";
 import { connectGoogleCalendar } from "@/components/connect/google-calendar";
+import { setSecret } from "@/lib/actions/secrets";
 import { integrationById, type Integration } from "@/lib/integrations";
 import type { BuildStep, Check as TestCheck } from "@/lib/script/build";
 import type { Mode, Plan, Project } from "@/lib/types";
@@ -25,8 +26,8 @@ function Card({ title, icon, children, tone }: { title: string; icon: React.Reac
 
 /* ---------------- Connect ---------------- */
 
-export function ConnectCard({ plan, project, onSet, onStart, reusable = [] }: {
-  plan: Plan; project: Project; onSet: (id: string, s: "connected" | "sample") => Promise<void>; onStart: () => void; reusable?: string[];
+export function ConnectCard({ plan, project, onSet, onStart, reusable = [], built }: {
+  plan: Plan; project: Project; onSet: (id: string, s: "connected" | "sample") => Promise<void>; onStart: () => void; reusable?: string[]; built?: boolean;
 }) {
   const [consent, setConsent] = useState<Integration | null>(null);
   const [keyFor, setKeyFor] = useState<string | null>(null);
@@ -53,6 +54,12 @@ export function ConnectCard({ plan, project, onSet, onStart, reusable = [] }: {
                     <div className="min-w-0 flex-1"><div className="text-sm font-medium">{c.name}</div><div className="text-xs text-muted-foreground">{c.why}</div></div>
                     {s === "connected" && <span className="flex items-center gap-1 text-xs text-success"><Check className="size-3.5" />Connected{c.id === "google-calendar" && " · real"}</span>}
                     {s === "sample" && <span className="rounded bg-warning-soft px-1.5 py-0.5 text-[11px]">Sample data</span>}
+                    {s === "sample" && (
+                      <Button size="xs" variant="outline" onClick={async () => {
+                        if (c.id === "google-calendar") { const err = await connectGoogleCalendar(`/p/${project.id}`, project.id); if (err) toast.error(err); return; }
+                        if (c.kind === "oauth" && integ) setConsent(integ); else setKeyFor(c.id);
+                      }}>Connect</Button>
+                    )}
                   </div>
                   {!s && reusable.includes(c.id) && (
                     <div className="mt-2 flex gap-2 pl-9">
@@ -75,9 +82,13 @@ export function ConnectCard({ plan, project, onSet, onStart, reusable = [] }: {
           </ul>
         </>
       )}
-      <Button className="mt-3 w-full" disabled={pending.length > 0} onClick={onStart}>
-        {pending.length ? `Connect or skip ${pending.length} more to continue` : `Start build · ~$${plan.estimate.credits.toFixed(2)} · ~${plan.estimate.minutes} min`}
-      </Button>
+      {built ? (
+        <p className="mt-3 rounded-lg bg-muted p-2.5 text-xs text-muted-foreground">Your app is already built. Connection changes apply right away — no rebuild needed.</p>
+      ) : (
+        <Button className="mt-3 w-full" disabled={pending.length > 0} onClick={onStart}>
+          {pending.length ? `Connect or skip ${pending.length} more to continue` : `Start build · ~$${plan.estimate.credits.toFixed(2)} · ~${plan.estimate.minutes} min`}
+        </Button>
+      )}
       {project.demo_data && !pending.length && <p className="mt-2 text-[11px] text-muted-foreground">Your app will show a “Demo data” badge until you connect real accounts. You can do that anytime.</p>}
 
       <ConsentDialog integration={consent} open={!!consent} onOpenChange={(o) => !o && setConsent(null)}
@@ -85,9 +96,16 @@ export function ConnectCard({ plan, project, onSet, onStart, reusable = [] }: {
       <Dialog open={!!keyFor} onOpenChange={(o) => !o && setKeyFor(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Add {keyFor}</DialogTitle><DialogDescription>Stored in your encrypted vault and injected at runtime. Never paste keys into chat.</DialogDescription></DialogHeader>
-          <form className="space-y-3" onSubmit={async (e) => { e.preventDefault(); if (keyFor) await onSet(keyFor, "connected"); setKeyFor(null); toast.success("Key saved to vault"); }}>
-            <Input type="password" required placeholder="sk-…" autoComplete="off" />
-            <p className="text-[11px] text-muted-foreground">Prototype: the value is not stored.</p>
+          <form className="space-y-3" onSubmit={async (e) => {
+            e.preventDefault();
+            if (!keyFor) return;
+            const value = String(new FormData(e.currentTarget).get("value") ?? "");
+            const r = await setSecret(project.id, "all", keyFor, value);
+            if ("error" in r) return toast.error(r.error);
+            await onSet(keyFor, "connected"); setKeyFor(null); toast.success("Key encrypted and saved to the vault");
+          }}>
+            <Input name="value" type="password" required placeholder="sk-…" autoComplete="off" aria-label="Key value" />
+            <p className="text-[11px] text-muted-foreground">Encrypted on the server (AES-256-GCM). Only the last 4 characters are ever shown.</p>
             <div className="flex justify-end"><Button type="submit">Save to vault</Button></div>
           </form>
         </DialogContent>

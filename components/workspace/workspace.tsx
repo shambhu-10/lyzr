@@ -8,7 +8,7 @@ import { PlanPanel } from "./plan-panel";
 import { CodePanel } from "./code-panel";
 import { EnvPanel, LogsPanel } from "./dev-panels";
 import { Tour } from "./tour";
-import { FocusMode } from "./focus-mode";
+import { FocusTips, MusicPlayer } from "./focus-mode";
 import { DiffReview, type ProposedEdit } from "./diff-review";
 import { codeAI } from "./code-panel";
 import { BuildCard, ConnectCard, LiveCard, ShipCard, TestCard } from "./stage-cards";
@@ -17,7 +17,8 @@ import { AgentCanvas } from "@/components/agents/agent-canvas";
 import { AgentDrawer } from "@/components/agents/agent-drawer";
 import { Button } from "@/components/ui/button";
 import { askQuestions, deploy, finishBuild, generateUI, quickChange, revertTo, revisePlan, saveFile, savePlan, setConnection, setStage, submitAnswers, type Msg } from "@/lib/actions/workspace";
-import { addComment, markComments, type Comment } from "@/lib/actions/comments";
+import { addComment, deleteComment, markComments, updateComment, type Comment } from "@/lib/actions/comments";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { buildSteps, testChecks } from "@/lib/script/build";
 import { filesFor } from "@/lib/script/files";
 import { projectSpend } from "@/lib/usage";
@@ -73,7 +74,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   const chatPanel = usePanelRef();
   const [chatCollapsed, setChatCollapsed] = useState(() => (layout.defaultLayout?.chat ?? 32) < 6); // restored collapsed layout
   const plan = project.plan;
-  const source = (project.source ?? {}) as { framework?: string; template?: boolean };
+  const source = project.source ?? {};
   const framework = source.framework ?? "lyzr";
   const reached = ORDER.indexOf(project.stage);
 
@@ -168,6 +169,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   const [terminal, setTerminal] = useState<string[]>([]);
   const [uiReady, setUiReady] = useState(() => !!plan?.screens.every((s) => s.blocks?.length));
   const finishing = useRef(false);
+  const buildStarted = useRef(0);
   const generating = useRef(false);
   const building = project.stage === "build";
 
@@ -185,10 +187,10 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
     if (at >= steps.length) {
       if (finishing.current || !uiReady) return;
       finishing.current = true;
-      finishBuild(project.id).then((r) => {
+      finishBuild(project.id, (Date.now() - buildStarted.current) / 1000).then((r) => {
         setFiles(r.files); setAgents(r.agents); push([r.message]);
         setVersions((v) => [{ id: crypto.randomUUID(), label: "First build", created_at: new Date().toISOString(), summary: "First build." }, ...v]);
-        patch({ stage: "test" }); setView("test");
+        patch({ stage: "test", source: { ...(project.source ?? {}), build: { seconds: Math.round((Date.now() - buildStarted.current) / 1000), at: new Date().toISOString() } } }); setView("test");
         notifyDone(project.name);
         toast.success("Build finished — testing now");
       });
@@ -201,7 +203,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   }, [building, paused, at, steps, project.id, uiReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startBuild = async () => {
-    setAt(0); setTerminal([]); finishing.current = false; generating.current = false; setUiReady(false);
+    setAt(0); setTerminal([]); finishing.current = false; generating.current = false; setUiReady(false); buildStarted.current = Date.now();
     setTab(mode === "developer" ? "code" : "preview");
     setMobilePane("chat");
     try { if ("Notification" in window && Notification.permission === "default") void Notification.requestPermission(); } catch {}
@@ -219,7 +221,9 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
 
   /* ---- Comments on the preview ---- */
   const openComments = comments.filter((c) => c.status === "open");
-  const commentCounts = useMemo(() => openComments.reduce<Record<string, number>>((m, c) => ({ ...m, [`${c.screen}::${c.target}`]: (m[`${c.screen}::${c.target}`] ?? 0) + 1 }), {}), [openComments]);
+  const onEditComment = async (id: string, body: string) => { setComments((x) => x.map((c) => (c.id === id ? { ...c, body } : c))); await updateComment(id, body); };
+  const onDeleteComment = async (id: string) => { setComments((x) => x.filter((c) => c.id !== id)); await deleteComment(id); toast("Comment deleted"); };
+  const [reviewComments, setReviewComments] = useState(false);
   const onComment = async (t: { screen: string; target: string }, body: string) => {
     try { const c = await addComment(project.id, t.screen, t.target, body); setComments((x) => [...x, c]); toast.success("Comment added"); }
     catch { toast.error("Couldn't save the comment (has migration 0002 been run?)"); }
@@ -251,9 +255,9 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   const stageCard = () => {
     if (!plan) return null;
     if (ORDER.indexOf(view) > reached) return null;
-    if (view === "connect") return <ConnectCard plan={plan} project={project} onSet={onSetConnection} onStart={startBuild} reusable={workspaceConnections} />;
+    if (view === "connect") return <ConnectCard plan={plan} project={project} onSet={onSetConnection} onStart={startBuild} reusable={workspaceConnections} built={reached > ORDER.indexOf("build")} />;
     if (view === "build") return building ? <BuildCard steps={steps} at={at} mode={mode} paused={paused} onPause={() => setPaused((p) => !p)} remaining={remaining} waitingForAI={!uiReady && steps[at]?.reveal !== undefined}
-      focus={<FocusMode done={at >= steps.length} tips={[
+      focus={<FocusTips done={at >= steps.length} tips={[
         { label: "Re-read your plan", onClick: () => setTab("plan") },
         mode === "developer" ? { label: "Watch the code being written", onClick: () => setTab("code") } : { label: "Watch screens appear", onClick: () => setTab("preview") },
         ...(project.demo_data ? [{ label: "Connect real accounts", onClick: () => setView("connect") }] : []),
@@ -276,11 +280,19 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   const canComment = reached >= ORDER.indexOf("test");
 
   const chatNode = (
+    <>
+    <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b px-3">
+      <span className="text-xs font-medium text-muted-foreground">Chat with Architect</span>
+      <MusicPlayer />
+    </div>
+    <div className="min-h-0 flex-1">
           <Chat messages={messages} busy={!!busy} busyLabel={busy ?? ""} placeholder={placeholder} onSend={onSend}
       context={codeChat && openFile ? `@${openFile}` : undefined} onReviewEdit={(e) => setCodeEdit(e as ProposedEdit)}
       onAnswer={(a, m) => (m.meta?.forChange ? change(`${m.meta.forChange}\nClarification from the user: ${a}`) : onAnswer(a))} planToggle={planFirst} onPlanToggle={setPlanFirst}>
       {stageCard()}
     </Chat>
+    </div>
+    </>
   );
 
   const appNode = (
@@ -293,13 +305,14 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
             ))}
             {tab === "preview" && canComment && (
               <div className="ml-auto flex items-center gap-2">
-                {openComments.length > 0 && <Button size="xs" onClick={sendComments} disabled={!!busy}><Send /> Send {openComments.length} to Architect</Button>}
+                {openComments.length > 0 && <Button size="xs" onClick={() => setReviewComments(true)} disabled={!!busy}><Send /> Review &amp; send {openComments.length}</Button>}
                 <Button size="xs" variant={commenting ? "default" : "outline"} onClick={() => setCommenting((c) => !c)}><MessageSquarePlus /> {commenting ? "Done commenting" : "Comment"}</Button>
               </div>
             )}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto bg-muted/30">
             {tab === "plan" && <PlanPanel plan={plan} mode={mode} framework={framework} busy={!!busy} canApprove={project.stage === "plan"} canEdit={project.stage === "plan" || project.stage === "connect"}
+              actual={reached >= ORDER.indexOf("test") ? { spent: projectSpend(project), seconds: source.build?.seconds } : undefined}
               onApprove={() => { goStage("connect"); toast.success("Plan approved"); }} onAddBack={(item) => revise(`Add back: ${item}`)}
               onSave={async (p, via) => {
                 patch({ plan: p, name: p.name }); // optimistic
@@ -311,7 +324,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
               <div className="h-full p-4">
                 {commenting && <p className="mb-2 text-center text-xs text-muted-foreground">Click any part of the app to leave a comment. Send them to Architect when you&apos;re done.</p>}
                 <AppPreview plan={plan} revealed={revealed} demo={project.demo_data} building={building} projectId={reached >= ORDER.indexOf("test") ? project.id : undefined}
-                  commenting={commenting} comments={commentCounts} onComment={onComment} />
+                  commenting={commenting} comments={openComments} onComment={onComment} onEditComment={onEditComment} onDeleteComment={onDeleteComment} />
               </div>
             ) : <EmptyPreview stage={plan ? project.stage : "plan"} />)}
             {tab === "agents" && (plan ? <AgentCanvas plan={plan} framework={framework} built={agents.length > 0} onOpen={openAgent} /> : <EmptyPreview stage="plan" />)}
@@ -364,6 +377,26 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
           <section className={cn("min-h-0 min-w-0 flex-1 flex-col", mobilePane === "app" ? "flex" : "hidden")} aria-label="Your app">{appNode}</section>
         </div>
       )}
+      <Dialog open={reviewComments} onOpenChange={setReviewComments}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Send {openComments.length} comment{openComments.length === 1 ? "" : "s"} to Architect</DialogTitle>
+            <DialogDescription>Architect applies them as one change and saves a version you can roll back.</DialogDescription></DialogHeader>
+          <ul className="max-h-80 space-y-2 overflow-y-auto">
+            {openComments.map((c) => (
+              <li key={c.id} className="rounded-lg border p-2.5 text-sm">
+                <div className="text-[11px] text-muted-foreground">{c.screen} › {c.target}</div>
+                <textarea defaultValue={c.body} rows={2} aria-label="Comment" onBlur={(e) => e.target.value.trim() && e.target.value !== c.body && onEditComment(c.id, e.target.value.trim())}
+                  className="mt-1 w-full resize-none rounded-md border bg-background p-1.5 text-sm outline-none focus:ring-3 focus:ring-ring/25" />
+                <button onClick={() => onDeleteComment(c.id)} className="mt-1 text-xs text-muted-foreground hover:text-destructive">Remove</button>
+              </li>
+            ))}
+          </ul>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setReviewComments(false)}>Keep editing</Button>
+            <Button disabled={!openComments.length || !!busy} onClick={() => { setReviewComments(false); void sendComments(); }}><Send /> Send to Architect</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <DiffReview edit={codeEdit} onClose={() => setCodeEdit(null)} onAccept={async (e) => {
         setFiles((fs) => fs.map((f) => (f.path === e.path ? { ...f, content: e.modified } : f)));
         await saveFile(project.id, e.path, e.modified);

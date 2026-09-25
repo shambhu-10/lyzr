@@ -14,3 +14,13 @@ export async function markComments(ids: string[], status: Comment["status"]) {
   const { supabase } = await requireUser();
   await supabase.from("comments").update({ status }).in("id", ids);
 }
+
+export async function updateComment(id: string, body: string) {
+  const { supabase } = await requireUser();
+  await supabase.from("comments").update({ body: body.slice(0, 1000) }).eq("id", id);
+}
+
+export async function deleteComment(id: string) {
+  const { supabase } = await requireUser();
+  await supabase.from("comments").delete().eq("id", id);
+}

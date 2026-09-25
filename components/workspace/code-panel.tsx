@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import { useTheme } from "next-themes";
 import type { Monaco as MonacoApi, OnMount } from "@monaco-editor/react";
@@ -37,6 +37,12 @@ export function trimOverlap(lineBefore: string, completion: string) {
 
 // Monaco providers are global per page; register once and read the live editor state from these refs.
 const live = { projectId: "", path: "", enabled: true, locked: false };
+// Autocomplete status for the editor header, so people can see it working.
+type Status = "idle" | "thinking" | "ready";
+let status: Status = "idle";
+const statusListeners = new Set<() => void>();
+const setStatus = (s: Status) => { status = s; statusListeners.forEach((l) => l()); };
+const copilotStatus = { subscribe: (l: () => void) => { statusListeners.add(l); return () => { statusListeners.delete(l); }; }, get: () => status };
 let registered = false;
 function registerCopilot(m: MonacoApi) {
   if (registered) return;
@@ -50,15 +56,17 @@ function registerCopilot(m: MonacoApi) {
       const prefix = model.getValueInRange({ startLineNumber: 1, startColumn: 1, endLineNumber: pos.lineNumber, endColumn: pos.column });
       const suffix = model.getValueInRange({ startLineNumber: pos.lineNumber, startColumn: pos.column, endLineNumber: last, endColumn: model.getLineMaxColumn(last) });
       if (!model.getLineContent(pos.lineNumber).trim() && !prefix.trim()) return { items: [] };
+      setStatus("thinking");
       try {
         const { text: raw } = await codeAI({ op: "complete", projectId: live.projectId, path: live.path, prefix, suffix });
         const text = trimOverlap(model.getLineContent(pos.lineNumber).slice(0, pos.column - 1), raw ?? "");
-        if (token.isCancellationRequested || !text.trim()) return { items: [] };
+        if (token.isCancellationRequested || !text.trim()) { setStatus("idle"); return { items: [] }; }
+        setStatus("ready");
         return { items: [{ insertText: text, range: new m.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column) }] };
-      } catch { return { items: [] }; }
+      } catch { setStatus("idle"); return { items: [] }; }
     },
-    freeInlineCompletions: () => {},
-    disposeInlineCompletions: () => {},
+    freeInlineCompletions: () => setStatus("idle"),
+    disposeInlineCompletions: () => setStatus("idle"),
   };
   LANGS.forEach((l) => m.languages.registerInlineCompletionsProvider(l, provider as never));
 }
@@ -74,6 +82,7 @@ export function CodePanel({ files, locked, terminal, onSave, writing, name = "pr
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<"idle" | "saving" | "saved">("idle");
   const [copilot, setCopilot] = useState(true);
+  const aiStatus = useSyncExternalStore(copilotStatus.subscribe, copilotStatus.get, () => "idle" as Status);
   const [prompt, setPrompt] = useState<{ selection: string; range: object } | null>(null);
   const [instruction, setInstruction] = useState("");
   const [busy, setBusy] = useState(false);
@@ -116,6 +125,8 @@ export function CodePanel({ files, locked, terminal, onSave, writing, name = "pr
       setPrompt({ selection: model.getValueInRange(range), range }); setInstruction("");
     };
     ed.addAction({ id: "architect.edit", label: "Edit with AI…", keybindings: [m.KeyMod.CtrlCmd | m.KeyCode.KeyK], contextMenuGroupId: "1_ai", run: openPrompt });
+    ed.addAction({ id: "architect.suggest", label: "Suggest code here (AI)", keybindings: [m.KeyMod.Alt | m.KeyCode.Backslash], contextMenuGroupId: "1_ai",
+      run: () => ed.trigger("architect", "editor.action.inlineSuggest.trigger", {}) });
     ed.addAction({ id: "architect.fix", label: "Fix with AI", contextMenuGroupId: "1_ai", run: () => { openPrompt(); setInstruction("Find and fix bugs or mistakes in this code. Keep behaviour otherwise identical."); } });
     ed.addAction({ id: "architect.explain", label: "Explain in chat", contextMenuGroupId: "1_ai", run: () => {
       const sel = ed.getSelection(); const model = ed.getModel();
@@ -149,6 +160,11 @@ export function CodePanel({ files, locked, terminal, onSave, writing, name = "pr
       <div className="flex h-9 shrink-0 items-center justify-end gap-2 border-b px-3 text-xs">
         <label className="mr-auto flex items-center gap-1.5 text-muted-foreground" title="Ghost-text suggestions as you type. Tab to accept.">
           <Sparkles className="size-3.5 text-dev" /> AI autocomplete <Switch checked={copilot} onCheckedChange={setCopilot} className="scale-75" aria-label="AI autocomplete" />
+          {copilot && !locked && (
+            <span aria-live="polite" className={cn("rounded px-1.5 py-0.5 text-[10px]", aiStatus === "ready" ? "bg-dev-soft font-medium text-dev" : "text-muted-foreground")}>
+              {aiStatus === "thinking" ? <><Loader2 className="mr-1 inline size-3 animate-spin" />thinking…</> : aiStatus === "ready" ? "Tab to accept · Esc to dismiss" : "pause typing for a suggestion · Alt+\\ to ask"}
+            </span>
+          )}
         </label>
         <span className="hidden text-muted-foreground lg:inline"><kbd className="rounded border px-1 font-mono">⌘K</kbd> edit with AI · right-click for more</span>
         <button onClick={() => { navigator.clipboard.writeText(`npx @architect/cli pull ${name} && cursor ${name}`); toast("Command copied — run it in your terminal to open this project in Cursor"); }}

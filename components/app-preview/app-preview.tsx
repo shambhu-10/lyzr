@@ -6,6 +6,8 @@ import type { Block, Plan } from "@/lib/types";
 import { runBlockAgent } from "@/lib/actions/agents";
 import { calendarEvents, type CalendarItem } from "@/lib/actions/calendar";
 import { RichText } from "@/components/rich-text";
+import { CommentThread } from "./comment-thread";
+import type { Comment } from "@/lib/actions/comments";
 import { cn } from "@/lib/utils";
 
 type Item = Block["items"][number] & { description?: string; attendees?: string[] };
@@ -19,9 +21,10 @@ type Ctx = {
  * Renders a generated app from its plan: each screen is a list of AI-generated blocks.
  * Used in the workspace preview (screens assemble as the build reveals them) and on /live/[slug].
  */
-export function AppPreview({ plan, revealed, demo, building, projectId, slug, commenting, comments, onComment }: {
+export function AppPreview({ plan, revealed, demo, building, projectId, slug, commenting, comments, onComment, onEditComment, onDeleteComment }: {
   plan: Plan; revealed: number; demo: boolean; building?: boolean; projectId?: string; slug?: string;
-  commenting?: boolean; comments?: Record<string, number>; onComment?: (t: CommentTarget, body: string) => void;
+  commenting?: boolean; comments?: Comment[]; onComment?: (t: CommentTarget, body: string) => void;
+  onEditComment?: (id: string, body: string) => void; onDeleteComment?: (id: string) => void;
 }) {
   const [screen, setScreen] = useState(0);
   const [selection, setSelection] = useState<Item | null>(null);
@@ -86,8 +89,8 @@ export function AppPreview({ plan, revealed, demo, building, projectId, slug, co
                 <p className="mt-1 text-sm text-black/55">{s.purpose}</p>
               </header>
               {blocks.map((b, k) => (
-                <Commentable key={`${active}-${k}-${b.title}`} on={!!commenting} count={comments?.[`${s.name}::${b.title}`] ?? 0}
-                  onSave={(body) => onComment?.({ screen: s.name, target: b.title }, body)}>
+                <Commentable key={`${active}-${k}-${b.title}`} on={!!commenting} thread={(comments ?? []).filter((c) => c.screen === s.name && c.target === b.title)}
+                  onSave={(body) => onComment?.({ screen: s.name, target: b.title }, body)} onEdit={onEditComment} onDelete={onDeleteComment}>
                   <BlockView block={b} ctx={ctx} />
                 </Commentable>
               ))}
@@ -121,13 +124,25 @@ function SkeletonScreen() {
   );
 }
 
-function Commentable({ on, count, onSave, children }: { on: boolean; count: number; onSave: (body: string) => void; children: React.ReactNode }) {
+function Commentable({ on, thread, onSave, onEdit, onDelete, children }: {
+  on: boolean; thread: Comment[]; onSave: (body: string) => void; onEdit?: (id: string, body: string) => void; onDelete?: (id: string) => void; children: React.ReactNode;
+}) {
   const [open, setOpen] = useState(false);
+  const [viewing, setViewing] = useState(false);
   const [text, setText] = useState("");
   return (
     <div className={cn("relative rounded-xl", on && "cursor-crosshair outline-2 outline-offset-4 outline-transparent hover:outline-dashed hover:outline-[#139C8E]/60")}
-      onClickCapture={(e) => { if (on && !open) { e.preventDefault(); e.stopPropagation(); setOpen(true); } }}>
-      {count > 0 && <span className="absolute -top-2 -right-2 z-10 grid size-5 place-items-center rounded-full bg-[#139C8E] text-[10px] font-semibold text-white">{count}</span>}
+      onClickCapture={(e) => {
+        if ((e.target as HTMLElement).closest("[data-comment-ui]")) return; // badge & thread handle their own clicks
+        if (on && !open) { e.preventDefault(); e.stopPropagation(); setOpen(true); setViewing(false); }
+      }}>
+      {thread.length > 0 && (
+        <button data-comment-ui type="button" onClick={(e) => { e.stopPropagation(); setViewing((v) => !v); }} aria-label={`${thread.length} comment${thread.length === 1 ? "" : "s"} — view`}
+          className="absolute -top-2 -right-2 z-20 grid size-5 cursor-pointer place-items-center rounded-full bg-[#139C8E] text-[10px] font-semibold text-white ring-2 ring-white hover:scale-110">{thread.length}</button>
+      )}
+      {viewing && thread.length > 0 && (
+        <div data-comment-ui><CommentThread comments={thread} onClose={() => setViewing(false)} onEdit={(id, b) => onEdit?.(id, b)} onDelete={(id) => onDelete?.(id)} /></div>
+      )}
       {children}
       {open && (
         <div className="relative z-20 mt-2 rounded-xl border border-black/10 bg-white p-3 shadow-lg">

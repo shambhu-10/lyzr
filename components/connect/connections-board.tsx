@@ -1,6 +1,7 @@
 "use client";
-import { useState } from "react";
-import { KeyRound, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { KeyRound, Plus, Trash2 } from "lucide-react";
+import { deleteSecret, listSecrets, setSecret, type SecretRow } from "@/lib/actions/secrets";
 import { toast } from "sonner";
 import { INTEGRATIONS, type Integration } from "@/lib/integrations";
 import { setWorkspaceConnection } from "@/lib/actions/connections";
@@ -52,10 +53,13 @@ export function ConnectionsBoard({ connected }: { connected: Record<string, stri
 }
 
 function SecretsVault() {
-  const [keys, setKeys] = useState([{ name: "OPENAI_API_KEY", tail: "x9Qa", used: "Briefly" }]);
+  const [keys, setKeys] = useState<SecretRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
   const [open, setOpen] = useState(false);
+  const refresh = () => listSecrets(null).then((r) => ("error" in r ? setError(r.error ?? null) : setKeys(r.secrets)));
+  useEffect(() => { refresh(); }, []);
   return (
     <div className="h-fit rounded-xl border bg-card p-4">
       <div className="flex items-center justify-between">
@@ -63,26 +67,30 @@ function SecretsVault() {
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button size="sm" variant="outline"><Plus /> Add</Button></DialogTrigger>
           <DialogContent className="sm:max-w-md">
-            <DialogHeader><DialogTitle>Add a secret</DialogTitle><DialogDescription>API keys live here — never paste them into chat.</DialogDescription></DialogHeader>
-            <form className="space-y-3" onSubmit={(e) => {
+            <DialogHeader><DialogTitle>Add a secret</DialogTitle><DialogDescription>API keys live here — never paste them into chat. Available to every project in this workspace.</DialogDescription></DialogHeader>
+            <form className="space-y-3" onSubmit={async (e) => {
               e.preventDefault();
-              // ponytail: prototype discards the value; production encrypts it server-side (e.g. Supabase Vault).
-              setKeys((k) => [...k, { name: name.toUpperCase().replace(/\W/g, "_"), tail: value.slice(-4), used: "—" }]);
-              setName(""); setValue(""); setOpen(false); toast.success("Secret saved to vault");
+              const r = await setSecret(null, "all", name, value);
+              if ("error" in r) return toast.error(r.error);
+              setName(""); setValue(""); setOpen(false); toast.success("Secret encrypted and saved"); refresh();
             }}>
-              <Input required placeholder="NAME (e.g. STRIPE_SECRET_KEY)" value={name} onChange={(e) => setName(e.target.value)} />
-              <Input required type="password" placeholder="Value" value={value} onChange={(e) => setValue(e.target.value)} autoComplete="off" />
-              <p className="text-[11px] text-muted-foreground">Prototype: the value is not stored — only the name and last 4 characters are shown.</p>
+              <Input required placeholder="NAME (e.g. STRIPE_SECRET_KEY)" value={name} onChange={(e) => setName(e.target.value)} className="font-mono" />
+              <Input required type="password" placeholder="Value" value={value} onChange={(e) => setValue(e.target.value)} autoComplete="off" aria-label="Secret value" />
+              <p className="text-[11px] text-muted-foreground">Encrypted on the server (AES-256-GCM). You can replace it later but never view it again.</p>
               <div className="flex justify-end"><Button type="submit">Save secret</Button></div>
             </form>
           </DialogContent>
         </Dialog>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">Encrypted. Injected into your app at runtime as environment variables.</p>
+      <p className="mt-1 text-xs text-muted-foreground">Encrypted. Injected into your apps at runtime as environment variables.</p>
+      {error && <p className="mt-3 rounded-md bg-warning-soft p-2 text-xs">{error}</p>}
       <div className="mt-4 space-y-2">
-        {keys.map((k) => (
-          <div key={k.name} className="flex items-center justify-between rounded-lg border bg-background px-3 py-2 text-xs">
-            <span className="font-mono">{k.name}</span><span className="text-muted-foreground">••••{k.tail}</span>
+        {keys === null && !error ? <p className="text-xs text-muted-foreground">Loading…</p> : keys?.length === 0 ? <p className="text-xs text-muted-foreground">No secrets yet.</p> : keys?.map((k) => (
+          <div key={k.id} className="flex items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2 text-xs">
+            <span className="truncate font-mono">{k.name}</span>
+            <span className="flex items-center gap-2 text-muted-foreground">••••{k.last4}
+              <button aria-label={`Delete ${k.name}`} onClick={async () => { await deleteSecret(k.id); toast(`${k.name} deleted`); refresh(); }} className="hover:text-destructive"><Trash2 className="size-3.5" /></button>
+            </span>
           </div>
         ))}
       </div>

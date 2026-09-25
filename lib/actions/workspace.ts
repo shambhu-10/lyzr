@@ -89,7 +89,7 @@ export async function generateUI(id: string) {
   return { plan: next, live: results.every((r) => r === null || r.live) };
 }
 
-export async function finishBuild(id: string) {
+export async function finishBuild(id: string, seconds?: number) {
   const { supabase, project } = await load(id);
   if (!project.plan) throw new Error("No plan");
   const framework = (project.source as { framework?: string } | null)?.framework ?? "lyzr";
@@ -102,7 +102,8 @@ export async function finishBuild(id: string) {
       instructions: `${a.role}. Ground every answer in the provided data; say what's missing instead of guessing. Never send or post anything without the user's approval.`,
     })));
   await supabase.from("versions").insert({ project_id: id, label: "First build", snapshot: { files, plan: project.plan, summary: `Built ${project.plan.screens.length} screens and ${project.plan.agents.length} agent${project.plan.agents.length > 1 ? "s" : ""}.` } });
-  await supabase.from("projects").update({ stage: "test", updated_at: touch() }).eq("id", id);
+  const source = { ...(project.source ?? {}), build: { seconds: Math.round(seconds ?? 0), at: touch() } };
+  await supabase.from("projects").update({ stage: "test", source, updated_at: touch() }).eq("id", id);
   const message = await say(supabase, id, { role: "assistant", kind: "text", content: `Build finished. ${files.length} files, ${project.plan.agents.length} agent${project.plan.agents.length > 1 ? "s" : ""}, 1 issue fixed for free. Next, I'll test it.` });
   const { data: agents } = await supabase.from("agents").select("*").eq("project_id", id).order("created_at");
   return { files, agents: agents ?? [], message };

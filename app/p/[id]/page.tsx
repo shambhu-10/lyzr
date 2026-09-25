@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/supabase/server";
 import { Workspace } from "@/components/workspace/workspace";
 import { CommandPalette } from "@/components/shell/command-palette";
+import { SessionKeeper } from "@/components/shell/session-keeper";
 import type { Msg } from "@/lib/actions/workspace";
 import type { Project } from "@/lib/types";
 import type { VersionRow } from "@/lib/workspace-types";
@@ -24,6 +25,7 @@ export default async function ProjectPage({ params }: PageProps<"/p/[id]">) {
   return (
     <>
     <CommandPalette />
+    <SessionKeeper />
     <Workspace
       initial={{ project: project as Project, messages: (messages ?? []) as Msg[], files: files ?? [], agents: agents ?? [], versions: (versions ?? []) as VersionRow[], comments: (comments ?? []) as Comment[] }}
       defaultMode={profile?.default_mode ?? "builder"}

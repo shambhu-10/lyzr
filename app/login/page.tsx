@@ -1,8 +1,14 @@
+import { redirect } from "next/navigation";
 import { Logo } from "@/components/logo";
+import { createClient } from "@/lib/supabase/server";
 import { LoginForm } from "./login-form";
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const { next, error } = await searchParams;
+  const safeNext = typeof next === "string" && next.startsWith("/") && !next.startsWith("//") ? next : "/home";
+  // Already signed in (e.g. a transient refresh hiccup sent you here): go straight back.
+  const { data: { user } } = await (await createClient()).auth.getUser();
+  if (user && !error) redirect(safeNext);
   return (
     <div className="grid min-h-screen md:grid-cols-2">
       <div className="flex flex-col px-6 py-8 md:px-12">

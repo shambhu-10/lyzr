@@ -47,7 +47,7 @@ export type Project = {
   plan: Plan | null;
   connections: Record<string, "connected" | "sample">;
   demo_data: boolean;
-  source: { repo?: string; stack?: string } | null;
+  source: { repo?: string; stack?: string; framework?: string; template?: boolean; build?: { seconds: number; at: string } } | null;
   created_at: string;
   updated_at: string;
 };

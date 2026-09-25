@@ -38,3 +38,13 @@ assert.equal(trimOverlap("  const hours = ", "const hours = Math.floor(x)"), "Ma
 assert.equal(trimOverlap("  return ", "value;"), "value;");
 assert.equal(trimOverlap("", "foo()"), "foo()");
 console.log("autocomplete ok");
+
+// Secrets: round-trip, tamper detection.
+process.env.SECRETS_KEY = Buffer.alloc(32, 7).toString("base64");
+import("../lib/secret-box").then(({ encryptSecret, decryptSecret }) => {
+  const enc = encryptSecret("sk-live-123456");
+  assert.equal(decryptSecret(enc), "sk-live-123456");
+  assert.notEqual(enc.ciphertext, "sk-live-123456");
+  assert.throws(() => decryptSecret({ ...enc, tag: Buffer.alloc(16).toString("base64") }));
+  console.log("secrets ok");
+});

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { Headphones, Pause, Volume2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -50,49 +50,57 @@ class Ambient {
   }
 }
 
-/** Keeps people in flow during a build: optional ambient music, useful things to do, and a chime when it's done. */
-export function FocusMode({ done, tips }: { done: boolean; tips: { label: string; onClick: () => void }[] }) {
-  const [on, setOn] = useState(false);
-  const [volume, setVolume] = useState(0.5);
-  const engine = useRef<Ambient | null>(null);
+/* A single player per page: the chat-panel control starts/stops it; the build card only chimes. */
+let engine: Ambient | null = null;
+let level = 0.5;
+const listeners = new Set<() => void>();
+const emit = () => listeners.forEach((l) => l());
+export const music = {
+  subscribe: (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; },
+  isOn: () => !!engine,
+  toggle() {
+    if (engine) { engine.stop(0.8); engine = null; }
+    else { engine = new Ambient(level * 0.6); engine.start(); }
+    try { localStorage.setItem(KEY, engine ? "1" : "0"); } catch {}
+    emit();
+  },
+  setVolume(v: number) { level = v; engine?.setVolume(v * 0.6); emit(); },
+  volume: () => level,
+  chime() { if (engine) engine.chime(); else { const a = new Ambient(0.6); a.chime(); a.stop(2.5); } },
+  stop() { engine?.stop(0.4); engine = null; emit(); },
+};
 
-  // Browsers only allow audio after a user gesture, so we never autoplay — we just remember the preference.
+/** Compact player for the top of the chat panel — available any time in a project. */
+export function MusicPlayer() {
+  const on = useSyncExternalStore(music.subscribe, music.isOn, () => false);
+  const volume = useSyncExternalStore(music.subscribe, music.volume, () => 0.5);
   const wanted = useSyncExternalStore(() => () => {}, () => { try { return localStorage.getItem(KEY) === "1"; } catch { return false; } }, () => false);
-
-  const toggle = () => {
-    if (engine.current) { engine.current.stop(0.8); engine.current = null; setOn(false); try { localStorage.setItem(KEY, "0"); } catch {} return; }
-    engine.current = new Ambient(volume * 0.6); engine.current.start(); setOn(true);
-    try { localStorage.setItem(KEY, "1"); } catch {}
-  };
-
-  useEffect(() => {
-    if (!done || !engine.current) return;
-    engine.current.chime(); engine.current.stop(3); engine.current = null;
-    const t = setTimeout(() => setOn(false), 0);
-    return () => clearTimeout(t);
-  }, [done]);
-  useEffect(() => () => engine.current?.stop(0.3), []);
-
-  if (done) return null;
+  useEffect(() => () => music.stop(), []); // leaving the project stops the music
   return (
-    <div className="mt-3 space-y-2 rounded-lg border border-dashed p-2.5">
-      <div className="flex items-center gap-2">
-        <button onClick={toggle} className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition", on ? "border-brand bg-brand-soft text-brand" : "hover:bg-muted", !on && wanted && "ring-2 ring-brand/30")}>
-          {on ? <Pause className="size-3" /> : <Headphones className="size-3" />} {on ? "Focus music on" : "Play focus music"}
-        </button>
-        {on && (
-          <label className="flex flex-1 items-center gap-1.5 text-muted-foreground"><Volume2 className="size-3.5" />
-            <input type="range" min={0} max={1} step={0.05} value={volume} onChange={(e) => { const v = Number(e.target.value); setVolume(v); engine.current?.setVolume(v * 0.6); }} aria-label="Music volume" className="h-1 flex-1 accent-[var(--brand)]" />
-          </label>
-        )}
-        {on && <span className="flex h-3 items-end gap-px" aria-hidden>{[0, 1, 2, 3].map((i) => <span key={i} className="w-0.5 animate-pulse rounded bg-brand" style={{ height: `${40 + ((i * 23) % 60)}%`, animationDelay: `${i * 0.2}s` }} />)}</span>}
-      </div>
-      {tips.length > 0 && (
-        <div className="text-xs text-muted-foreground">
-          While you wait:
-          <div className="mt-1.5 flex flex-wrap gap-1.5">{tips.map((t) => <button key={t.label} onClick={t.onClick} className="rounded-full border bg-background px-2.5 py-1 text-[11px] text-foreground hover:bg-muted">{t.label}</button>)}</div>
-        </div>
+    <div className="flex items-center gap-2">
+      <button onClick={music.toggle} title="Calm generated music to stay in flow" aria-pressed={on}
+        className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition", on ? "border-brand bg-brand-soft text-brand" : "text-muted-foreground hover:bg-muted hover:text-foreground", !on && wanted && "ring-2 ring-brand/25")}>
+        {on ? <Pause className="size-3" /> : <Headphones className="size-3" />} {on ? "Focus music" : "Focus music"}
+        {on && <span className="flex h-2.5 items-end gap-px" aria-hidden>{[0, 1, 2].map((i) => <span key={i} className="w-0.5 animate-pulse rounded bg-brand" style={{ height: `${45 + i * 25}%`, animationDelay: `${i * 0.2}s` }} />)}</span>}
+      </button>
+      {on && (
+        <label className="flex items-center gap-1 text-muted-foreground" title="Volume"><Volume2 className="size-3.5" />
+          <input type="range" min={0} max={1} step={0.05} value={volume} onChange={(e) => music.setVolume(Number(e.target.value))} aria-label="Music volume" className="h-1 w-16 accent-[var(--brand)]" />
+        </label>
       )}
+    </div>
+  );
+}
+
+/** Build card: useful things to do while waiting, and a chime when the build finishes. */
+export function FocusTips({ done, tips }: { done: boolean; tips: { label: string; onClick: () => void }[] }) {
+  const chimed = useRef(false);
+  useEffect(() => { if (done && !chimed.current) { chimed.current = true; music.chime(); } }, [done]);
+  if (done || !tips.length) return null;
+  return (
+    <div className="mt-3 rounded-lg border border-dashed p-2.5 text-xs text-muted-foreground">
+      While you wait{music.isOn() ? "" : " — tip: turn on Focus music at the top of the chat"}:
+      <div className="mt-1.5 flex flex-wrap gap-1.5">{tips.map((t) => <button key={t.label} onClick={t.onClick} className="rounded-full border bg-background px-2.5 py-1 text-[11px] text-foreground hover:bg-muted">{t.label}</button>)}</div>
     </div>
   );
 }
