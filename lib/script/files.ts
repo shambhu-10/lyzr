@@ -1,0 +1,196 @@
+import type { Plan } from "@/lib/types";
+
+export type GenFile = { path: string; content: string };
+
+export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const snake = (s: string) => slug(s).replace(/-/g, "_");
+const pascal = (s: string) => s.replace(/[^a-zA-Z0-9]+(.)?/g, (_, c) => (c ? c.toUpperCase() : "")).replace(/^./, (c) => c.toUpperCase());
+
+export function agentCode(a: Plan["agents"][number], framework: string): GenFile {
+  const n = snake(a.name);
+  const tools = a.tools.map((t) => `"${slug(t)}"`).join(", ");
+  const instr = `${a.role}. Ground every answer in the provided data; say what's missing instead of guessing.`;
+  const py = (body: string): GenFile => ({ path: `agents/${n}.py`, content: body.trim() + "\n" });
+  switch (framework) {
+    case "langgraph":
+      return py(`
+from langgraph.prebuilt import create_react_agent
+from architect.tools import load_tools
+
+${n} = create_react_agent(
+    model="groq:openai/gpt-oss-120b",
+    tools=load_tools([${tools}]),
+    prompt="""${instr}""",
+)
+`);
+    case "crewai":
+      return py(`
+from crewai import Agent, Task, Crew
+from architect.tools import load_tools
+
+${n} = Agent(
+    role="${a.name}",
+    goal="${a.role}",
+    backstory="""${instr}""",
+    tools=load_tools([${tools}]),
+    llm="groq/openai/gpt-oss-120b",
+)
+
+def run(inputs: dict) -> str:
+    task = Task(description="{request}", expected_output="A concise, grounded result", agent=${n})
+    return Crew(agents=[${n}], tasks=[task]).kickoff(inputs=inputs).raw
+`);
+    case "openai-agents":
+      return py(`
+from agents import Agent, Runner
+from agents.extensions.models.litellm_model import LitellmModel
+from architect.tools import load_tools
+
+${n} = Agent(
+    name="${a.name}",
+    instructions="""${instr}""",
+    model=LitellmModel(model="groq/openai/gpt-oss-120b"),
+    tools=load_tools([${tools}]),
+)
+
+async def run(request: str) -> str:
+    result = await Runner.run(${n}, request)
+    return result.final_output
+`);
+    case "adk":
+      return py(`
+from google.adk.agents import Agent
+from google.adk.models.lite_llm import LiteLlm
+from architect.tools import load_tools
+
+root_agent = Agent(
+    name="${n}",
+    model=LiteLlm(model="groq/openai/gpt-oss-120b"),
+    description="${a.role}",
+    instruction="""${instr}""",
+    tools=load_tools([${tools}]),
+)
+`);
+    case "mastra":
+      return {
+        path: `agents/${slug(a.name)}.ts`,
+        content: `import { Agent } from "@mastra/core/agent";
+import { groq } from "@ai-sdk/groq";
+import { loadTools } from "@/lib/tools";
+
+export const ${pascal(a.name).replace(/^./, (c) => c.toLowerCase())} = new Agent({
+  name: "${a.name}",
+  instructions: \`${instr}\`,
+  model: groq("openai/gpt-oss-120b"),
+  tools: loadTools([${tools}]),
+});
+`,
+      };
+    default:
+      // Lyzr ADK (docs.lyzr.ai/lyzr-adk): pip install lyzr-adk
+      return py(`
+import os
+from lyzr import Studio
+
+studio = Studio(api_key=os.environ["LYZR_API_KEY"])
+
+${n} = studio.create_agent(
+    name="${a.name}",
+    provider="gpt-4o",
+    role="${a.name}",
+    goal="${a.role}",
+    instructions="""${instr}""",
+)
+
+def run(message: str) -> str:
+    return ${n}.run(message).response
+`);
+  }
+}
+
+export function filesFor(plan: Plan, framework = "lyzr"): GenFile[] {
+  const screens = plan.screens.map((s) => ({ ...s, route: slug(s.name) }));
+  const files: GenFile[] = [
+    {
+      path: "AGENTS.md",
+      content: `# ${plan.name}
+
+${plan.summary}
+
+## Scope (v1)
+${plan.scope.map((s) => `- [${s.status === "in" ? "x" : " "}] ${s.item}${s.reason ? ` — ${s.reason}` : ""}`).join("\n")}
+
+## Screens
+${screens.map((s) => `- \`/${s.route}\` — ${s.purpose}`).join("\n")}
+
+## Agents
+${plan.agents.map((a) => `- **${a.name}**: ${a.role}${a.tools.length ? ` (tools: ${a.tools.join(", ")})` : ""}`).join("\n")}
+
+## Conventions
+- Never send, post or write to external tools without explicit user approval.
+- Secrets come from the workspace vault as env vars; never hard-code them.
+- Every agent response must be grounded in provided data.
+`,
+    },
+    {
+      path: "app/layout.tsx",
+      content: `import "./globals.css";
+import { Sidebar } from "@/components/sidebar";
+
+export const metadata = { title: "${plan.name}", description: "${plan.tagline}" };
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body className="flex min-h-screen">
+        <Sidebar links={${JSON.stringify(screens.map((s) => ({ href: `/${s.route}`, label: s.name })))}} />
+        <main className="flex-1 p-8">{children}</main>
+      </body>
+    </html>
+  );
+}
+`,
+    },
+    ...screens.map((s, i) => ({
+      path: `app/${i === 0 ? "" : `${s.route}/`}page.tsx`,
+      content: `// ${s.name} — ${s.purpose}
+import { runAgent } from "@/lib/agents";
+import { Card } from "@/components/ui/card";
+
+export default async function ${pascal(s.name)}Page() {
+  return (
+    <section className="space-y-6">
+      <header>
+        <h1 className="text-2xl font-semibold">${s.name}</h1>
+        <p className="text-muted-foreground">${s.purpose}</p>
+      </header>
+      <Card>{/* generated content */}</Card>
+    </section>
+  );
+}
+`,
+    })),
+    {
+      path: "lib/agents.ts",
+      content: `// Calls agents running in Architect's agent runtime (any framework, one HTTP contract).
+export async function runAgent(agent: ${plan.agents.map((a) => `"${slug(a.name)}"`).join(" | ")}, input: Record<string, unknown>) {
+  const res = await fetch(\`\${process.env.ARCHITECT_AGENT_URL}/agents/\${agent}/run\`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: \`Bearer \${process.env.ARCHITECT_AGENT_TOKEN}\` },
+    body: JSON.stringify({ input }),
+  });
+  if (!res.ok) throw new Error(\`Agent \${agent} failed: \${res.status}\`);
+  return res.json();
+}
+`,
+    },
+    ...plan.agents.map((a) => agentCode(a, framework)),
+  ];
+  if (plan.data.length)
+    files.push({
+      path: "supabase/migrations/0001_init.sql",
+      content: plan.data.map((d) => `-- ${d}\ncreate table ${snake(d).slice(0, 40)} (\n  id uuid primary key default gen_random_uuid(),\n  owner_id uuid not null default auth.uid(),\n  data jsonb not null,\n  created_at timestamptz default now()\n);\nalter table ${snake(d).slice(0, 40)} enable row level security;\n`).join("\n"),
+    });
+  files.push({ path: ".env.example", content: ["ARCHITECT_AGENT_URL=", "ARCHITECT_AGENT_TOKEN=", ...plan.connections.filter((c) => c.kind === "apikey").map((c) => `${c.id}=`)].join("\n") + "\n" });
+  return files;
+}
