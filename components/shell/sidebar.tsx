@@ -25,9 +25,9 @@ export function Sidebar({ name, email, org, credits }: { name: string; email: st
     const active = path === i.href || path.startsWith(i.href + "/");
     return (
       <Link key={i.href} href={i.href} aria-current={active ? "page" : undefined}
-        className={cn("flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-sidebar-foreground/80 transition hover:bg-sidebar-accent hover:text-sidebar-foreground",
-          active && "bg-sidebar-accent font-medium text-sidebar-foreground")}>
-        <i.icon className="size-4" />{i.label}
+        className={cn("relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-sidebar-foreground/80 transition hover:bg-sidebar-accent hover:text-sidebar-foreground",
+          active && "bg-sidebar-accent font-medium text-sidebar-foreground before:absolute before:inset-y-1.5 before:-left-2 before:w-0.5 before:rounded-full before:bg-brand")}>
+        <i.icon className={cn("size-4", active && "text-brand")} />{i.label}
       </Link>
     );
   };

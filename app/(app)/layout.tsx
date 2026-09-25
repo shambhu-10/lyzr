@@ -10,7 +10,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const { supabase, user, profile } = await requireUser();
   if (!profile?.onboarded) redirect("/onboarding");
   const name = profile.full_name ?? "";
-  const { data: projects } = await supabase.from("projects").select("stage, plan");
+  const { data: projects } = await supabase.from("projects").select("stage, plan").eq("owner_id", user.id); // credits: own projects only
   return (
     <div className="flex min-h-screen">
       <Sidebar name={name} email={user.email ?? ""} org={profile.org_name ?? ""} credits={balance(projects ?? [])} />

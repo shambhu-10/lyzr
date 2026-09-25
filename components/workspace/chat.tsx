@@ -10,11 +10,11 @@ import { RichText } from "@/components/rich-text";
 import { VoiceButton } from "@/components/voice-button";
 
 
-export function Chat({ messages, busy, busyLabel, placeholder, onSend, onAnswer, planToggle, onPlanToggle, children, context, onReviewEdit }: {
+export function Chat({ messages, busy, busyLabel, placeholder, onSend, onAnswer, planToggle, onPlanToggle, children, context, onReviewEdit, readOnly }: {
   messages: Msg[]; busy: boolean; busyLabel: string; placeholder: string;
   onSend: (text: string) => void; onAnswer: (summary: string, from: Msg) => void;
   planToggle: boolean; onPlanToggle: (v: boolean) => void; children?: React.ReactNode;
-  context?: string; onReviewEdit?: (edit: unknown) => void;
+  context?: string; onReviewEdit?: (edit: unknown) => void; readOnly?: string;
 }) {
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
@@ -53,7 +53,7 @@ export function Chat({ messages, busy, busyLabel, placeholder, onSend, onAnswer,
         )}
         <div ref={end} />
       </div>
-      <form onSubmit={(e) => { e.preventDefault(); if (text.trim() && !busy) { onSend(text.trim()); setText(""); } }} className="border-t p-3">
+      {readOnly ? <p className="border-t p-3 text-center text-xs text-muted-foreground">{readOnly}</p> : <form onSubmit={(e) => { e.preventDefault(); if (text.trim() && !busy) { onSend(text.trim()); setText(""); } }} className="border-t p-3">
         <div className="rounded-xl border bg-card p-2 focus-within:ring-3 focus-within:ring-ring/25">
           {context && <div className="mb-1 flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground">Context <span className="rounded bg-dev-soft px-1.5 py-0.5 font-mono text-dev">{context}</span> + project files</div>}
           <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder={placeholder} aria-label="Message Architect"
@@ -70,7 +70,7 @@ export function Chat({ messages, busy, busyLabel, placeholder, onSend, onAnswer,
             <button type="submit" disabled={!text.trim() || busy} aria-label="Send" className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground disabled:opacity-40"><ArrowUp className="size-3.5" /></button>
           </div>
         </div>
-      </form>
+      </form>}
     </div>
   );
 }

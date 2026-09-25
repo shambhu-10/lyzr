@@ -48,3 +48,40 @@ import("../lib/secret-box").then(({ encryptSecret, decryptSecret }) => {
   assert.throws(() => decryptSecret({ ...enc, tag: Buffer.alloc(16).toString("base64") }));
   console.log("secrets ok");
 });
+
+// Security scan: catches a hardcoded key and a missing env var; clean code passes.
+import { scan, secretOnLine } from "../lib/security-scan";
+const fake = "gsk_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3";
+const dirty = scan({ files: [{ path: "app/x.ts", content: `const k = "${fake}";\nfetch(process.env.STRIPE_KEY!)` }], plan: null, connections: {}, demo: false, vault: [] });
+assert.equal(dirty[0].rule, "hardcoded-secret");
+assert.equal(dirty[0].envName, "GROQ_API_KEY");
+assert.ok(!dirty[0].excerpt!.includes(fake), "excerpt must be masked");
+assert.ok(dirty.some((f) => f.rule === "missing-env" && f.envName === "STRIPE_KEY"));
+assert.deepEqual(scan({ files: [{ path: "a.ts", content: "const k = process.env.GROQ_API_KEY;\nfetch(process.env.ARCHITECT_AGENT_URL!)" }], plan: null, connections: {}, demo: false, vault: ["GROQ_API_KEY"] }), []);
+assert.equal(secretOnLine(`const apiKey = "your-key-here-123"`), null);
+assert.equal(secretOnLine(`const apiKey = "a8f9s7df98a7sdf9"`)?.env, "API_KEY");
+assert.equal(scan({ files: [], plan: null, connections: {}, demo: false, vault: [], agents: [{ name: "Mailer", tools: ["Send email"], instructions: "" }] })[0].rule, "agent-autonomy");
+console.log("security scan ok");
+
+// Themes: every enum maps to CSS variables.
+import { ACCENTS, FONTS, RADII, SIDEBARS, themeStyle } from "../lib/theme";
+for (const accent of Object.keys(ACCENTS) as (keyof typeof ACCENTS)[]) for (const radius of Object.keys(RADII) as (keyof typeof RADII)[])
+  for (const font of Object.keys(FONTS) as (keyof typeof FONTS)[]) for (const sidebar of SIDEBARS) {
+    const st = themeStyle({ name: "t", why: "", accent, radius, font, sidebar }) as Record<string, string>;
+    assert.ok(st["--a"] && st["--radius"] && st["--app-font"] && st["--app-side"]);
+  }
+console.log("themes ok");
+
+// Click-to-edit: only whitelisted copy paths change.
+import { applyTextEdit } from "../lib/plan-edit";
+const blk = { type: "list" as const, title: "Inbox", body: "", items: [{ title: "Row", meta: "m", badge: "" }], columns: [], rows: [], fields: [{ label: "Name", kind: "text" as const, placeholder: "" }], action: "Save", agent: "A", source: "static" as const };
+const ep = { ...plan, screens: [{ name: "Home", purpose: "p", blocks: [blk] }] };
+assert.equal(applyTextEdit(ep, "s.0.b.0.title", "Tickets")!.plan.screens[0].blocks![0].title, "Tickets");
+assert.equal(applyTextEdit(ep, "s.0.b.0.items.0.meta", "New")!.before, "m");
+assert.equal(applyTextEdit(ep, "s.0.b.0.fields.0.label", "Email")!.plan.screens[0].blocks![0].fields[0].label, "Email");
+assert.equal(applyTextEdit(ep, "s.0.b.0.agent", "Evil"), null);
+assert.equal(applyTextEdit(ep, "s.0.b.0.source", "google-calendar"), null);
+assert.equal(applyTextEdit(ep, "s.9.name", "x"), null);
+assert.equal(applyTextEdit(ep, "s.0.name", "   "), null);
+assert.equal(ep.screens[0].blocks[0].title, "Inbox", "original plan untouched");
+console.log("text edits ok");

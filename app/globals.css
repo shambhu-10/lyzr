@@ -47,6 +47,8 @@
   --color-warning-soft: var(--warning-soft);
   --color-dev: var(--dev);
   --color-dev-soft: var(--dev-soft);
+  --color-spark: var(--spark);
+  --color-spark-soft: var(--spark-soft);
   --font-display: var(--font-display);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -85,6 +87,11 @@
   --warning-soft: oklch(0.96 0.045 85);
   --dev: oklch(0.55 0.17 285);
   --dev-soft: oklch(0.95 0.03 285);
+  --spark: oklch(0.68 0.16 40);          /* warm second accent for highlights */
+  --spark-soft: oklch(0.95 0.035 50);
+  --shadow-soft: 0 1px 2px oklch(0.2 0.01 260 / 5%), 0 4px 16px -6px oklch(0.2 0.01 260 / 8%);
+  --shadow-lift: 0 2px 4px oklch(0.2 0.01 260 / 5%), 0 18px 40px -16px oklch(0.2 0.01 260 / 22%);
+  --shadow-hero: 0 30px 90px -30px oklch(0.35 0.06 200 / 40%), 0 0 0 1px oklch(0.2 0.01 260 / 4%);
   --chart-1: oklch(0.6 0.11 178);
   --chart-2: oklch(0.55 0.17 285);
   --chart-3: oklch(0.72 0.14 70);
@@ -128,6 +135,11 @@
   --warning-soft: oklch(0.32 0.06 75);
   --dev: oklch(0.72 0.15 285);
   --dev-soft: oklch(0.3 0.06 285);
+  --spark: oklch(0.76 0.14 45);
+  --spark-soft: oklch(0.32 0.06 45);
+  --shadow-soft: 0 1px 2px oklch(0 0 0 / 30%), 0 4px 16px -6px oklch(0 0 0 / 40%);
+  --shadow-lift: 0 2px 4px oklch(0 0 0 / 30%), 0 18px 40px -16px oklch(0 0 0 / 60%);
+  --shadow-hero: 0 30px 90px -30px oklch(0.5 0.1 180 / 35%), 0 0 0 1px oklch(1 0 0 / 6%);
   --chart-1: oklch(0.72 0.12 178);
   --chart-2: oklch(0.72 0.15 285);
   --chart-3: oklch(0.8 0.14 75);
@@ -165,3 +177,31 @@
 }
 @keyframes rise { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
 .rise { animation: rise .35s ease-out both; }
+
+/* Soft colour field for hero / CTA backgrounds. */
+.mesh {
+  background:
+    radial-gradient(40% 50% at 20% 10%, color-mix(in oklab, var(--brand) 18%, transparent), transparent 70%),
+    radial-gradient(35% 45% at 85% 5%, color-mix(in oklab, var(--dev) 14%, transparent), transparent 70%),
+    radial-gradient(30% 40% at 60% 60%, color-mix(in oklab, var(--spark) 10%, transparent), transparent 70%);
+}
+.grid-lines {
+  background-image: linear-gradient(to right, var(--border) 1px, transparent 1px), linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, black, transparent 75%);
+}
+/* Staggered entrance for hero pieces; scroll-driven reveal where supported (CSS only, no JS). */
+.rise-1 { animation: rise .6s .05s ease-out both; }
+.rise-2 { animation: rise .6s .15s ease-out both; }
+.rise-3 { animation: rise .6s .25s ease-out both; }
+.rise-4 { animation: rise .6s .35s ease-out both; }
+@keyframes reveal { from { opacity: 0; transform: translateY(24px) scale(.985) } to { opacity: 1; transform: none } }
+@supports (animation-timeline: view()) {
+  .reveal { animation: reveal linear both; animation-timeline: view(); animation-range: entry 0% cover 22%; }
+}
+@keyframes marquee { to { transform: translateX(-50%) } }
+.marquee { animation: marquee 40s linear infinite; }
+.marquee:hover { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .rise, .rise-1, .rise-2, .rise-3, .rise-4, .reveal, .marquee, .shimmer { animation: none !important; }
+}

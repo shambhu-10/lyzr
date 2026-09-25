@@ -10,29 +10,29 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { renameProject } from "@/lib/actions/projects";
+import { ShareDialog } from "./share-dialog";
 import { STAGES, type Mode, type Project, type Stage } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { useOrigin } from "@/hooks/use-origin";
 
 const ORDER: Stage[] = ["plan", "connect", "build", "test", "ship", "live"];
 
-export function WorkspaceHeader({ project, mode, onMode, view, onView, credits }: {
-  project: Project; mode: Mode; onMode: (m: Mode) => void; view: Stage; onView: (s: Stage) => void; credits: number;
+export function WorkspaceHeader({ project, mode, onMode, view, onView, credits, role }: {
+  project: Project; mode: Mode; onMode: (m: Mode) => void; view: Stage; onView: (s: Stage) => void; credits: number; role: "owner" | "editor" | "viewer";
 }) {
   const [draft, setName] = useState<string | null>(null);
   const name = draft ?? project.name; // follows the plan's name until the user edits it
   const [share, setShare] = useState(false);
   const [gh, setGh] = useState(false);
   const current = ORDER.indexOf(project.stage);
-  const origin = useOrigin();
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background px-2 sm:gap-3 sm:px-3">
       <Link href="/projects" className="flex items-center gap-1 rounded-lg p-1 text-muted-foreground hover:bg-muted" aria-label="Back to projects">
         <ChevronLeft className="size-4" /><LogoMark className="size-6" />
       </Link>
-      <input value={name} onChange={(e) => setName(e.target.value)} onBlur={() => name !== project.name && renameProject(project.id, name)}
+      <input value={name} onChange={(e) => setName(e.target.value)} readOnly={role === "viewer"} onBlur={() => name !== project.name && renameProject(project.id, name)}
         aria-label="Project name" className="w-24 truncate sm:w-36 rounded-md bg-transparent px-1.5 py-1 text-sm font-medium outline-none hover:bg-muted focus:bg-muted lg:w-44" />
+      {role !== "owner" && <span className="hidden rounded-md bg-dev-soft px-1.5 py-0.5 text-[11px] font-medium text-dev sm:inline">{role === "viewer" ? "View only" : "Shared with you"}</span>}
       {project.demo_data && <span className="hidden rounded-md bg-warning-soft px-1.5 py-0.5 text-[11px] font-medium sm:inline">Demo data</span>}
 
       <span className="mx-auto hidden text-xs text-muted-foreground md:inline lg:hidden">
@@ -73,21 +73,7 @@ export function WorkspaceHeader({ project, mode, onMode, view, onView, credits }
         <Button size="sm" variant="outline" onClick={() => setShare(true)}><Share2 /> <span className="hidden sm:inline">Share</span></Button>
       </div>
 
-      <Dialog open={share} onOpenChange={setShare}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Share “{name}”</DialogTitle><DialogDescription>Invite people to build with you, or share a preview link for feedback.</DialogDescription></DialogHeader>
-          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); toast.success("Invite sent"); setShare(false); }}>
-            <Input type="email" required placeholder="name@company.com" />
-            <select className="rounded-lg border bg-background px-2 text-sm" aria-label="Role"><option>Can edit</option><option>Can comment</option><option>Can view</option></select>
-            <Button type="submit">Invite</Button>
-          </form>
-          <div className="flex items-center gap-2 rounded-lg border p-2 text-xs">
-            <span className="flex-1 truncate font-mono">{origin}/live/{project.slug}</span>
-            <Button size="xs" variant="outline" onClick={() => { navigator.clipboard.writeText(`${location.origin}/live/${project.slug}`); toast("Link copied"); }}>Copy</Button>
-          </div>
-          <p className="text-xs text-muted-foreground">The public link works once the project is shipped to production.</p>
-        </DialogContent>
-      </Dialog>
+      <ShareDialog project={project} name={name} open={share} onOpenChange={setShare} isOwner={role === "owner"} />
 
       <Dialog open={gh} onOpenChange={setGh}>
         <DialogContent className="sm:max-w-md">

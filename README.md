@@ -73,8 +73,8 @@ Home · Projects · Agents · Connections · Explore | Usage & billing · Settin
 | Sign-in with Google, GitHub and email magic link (Supabase) | Build pipeline steps and terminal output (screens themselves are real) |
 | Postgres with row-level security on every table | Permission screens for third-party tools other than Google Calendar |
 | AI clarifying questions and structured plan (Groq · `openai/gpt-oss-120b`, strict JSON-schema outputs validated with zod) | Test results, deploy progress |
-| Agent playground chat (Groq, uses the model chosen on the agent) | Traces, evals, visitor analytics |
-| Projects, stage, chat history and Builder/Developer preference are saved | Secrets vault (values are discarded) |
+| Agent playground chat (Groq, uses the model chosen on the agent) | Agent traces |
+| Projects, stage, chat history and Builder/Developer preference are saved | GitHub push / PR, custom domains |
 | **Editable generated code**, saved to the database, with versions and restore | |
 | AI-generated screens during Build, and real change requests with summaries and diffs | |
 | Agent buttons inside the generated app, including on the live URL | |
@@ -85,7 +85,13 @@ Home · Projects · Agents · Connections · Explore | Usage & billing · Settin
 | Voice input (Groq Whisper) | |
 | Plan editing, including reading `AGENTS.md` back into the plan | |
 | Your real GitHub repo list on Import | |
-| Public live URL (`/live/[slug]`) that renders the shipped app | |
+| Public live URL (`/live/[slug]`) that renders the shipped app, with real view counts | |
+| Encrypted secrets vault (AES-256-GCM, only the last 4 characters are ever shown) | |
+| **Pick a look**: 3 AI-proposed themes rendered as live previews, switchable after launch | |
+| **Edit text in place** in the preview, saved as a version (no AI cost) | |
+| **Security check before Ship**: scans the code for hardcoded keys, missing env vars, unconnected accounts and agents that act without approval, with one-click fixes (e.g. move a key to the vault and rewrite the line) | |
+| **Community gallery** (opt-in per app) on the landing page and Explore, with **Remix** and real remix counts | |
+| **Team sharing**: invite links with Editor/Viewer roles, enforced by row-level security | |
 
 Without a `GROQ_API_KEY`, the AI steps switch to scripted answers, so a demo never gets stuck.
 

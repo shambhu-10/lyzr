@@ -9,15 +9,6 @@ export const TEMPLATES = [
   { cat: "Finance", title: "Invoice reconciliation agent", desc: "Matches invoices to payments and flags mismatches.", prompt: "Build an invoice reconciliation agent that matches uploaded invoices to bank transactions from a CSV, flags mismatches, and produces a monthly summary.", tools: ["Google Sheets"] },
 ] as const;
 
-export const COMMUNITY = [
-  { name: "ClaimGuard", author: "Vaibhavi S.", desc: "Insurance claim intake with fraud-signal checks and adjuster hand-off.", remixes: 214, cat: "Finance" },
-  { name: "Study Autopilot", author: "ffxs675", desc: "Turns a syllabus into a weekly study plan with spaced-repetition quizzes.", remixes: 188, cat: "Education" },
-  { name: "Consult Chrono", author: "Vidur K.", desc: "Tracks consulting hours per client and drafts weekly status notes.", remixes: 151, cat: "Productivity" },
-  { name: "Idea → Script", author: "Arnav M.", desc: "Generates a short-form video script and shot list from one idea.", remixes: 132, cat: "Content" },
-  { name: "PDF Transaction Analyzer", author: "Shahani G.", desc: "Extracts transactions from bank statement PDFs and categorises spend.", remixes: 97, cat: "Finance" },
-  { name: "Agent Marketers", author: "Vidur K.", desc: "Plans a campaign, writes the brief and drafts channel-specific copy.", remixes: 89, cat: "Marketing" },
-] as const;
-
 export const LEARN = [
   { title: "Your first app in 10 minutes", kind: "Tutorial", mins: 10 },
   { title: "Connecting real data: Google, Slack & API keys", kind: "Tutorial", mins: 8 },

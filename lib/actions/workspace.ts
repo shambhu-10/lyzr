@@ -1,12 +1,14 @@
 "use server";
 import { requireUser } from "@/lib/supabase/server";
-import { changeApp, clarify, generateScreen, makePlan } from "@/lib/ai/planner";
+import { changeApp, clarify, designLooks, generateScreen, makePlan } from "@/lib/ai/planner";
 import { llmEnabled } from "@/lib/ai/llm";
 import { filesFor } from "@/lib/script/files";
 import { logUsage } from "@/lib/usage-log";
 import { diffStats } from "@/lib/diff";
 import { estimate } from "@/lib/ai/estimate";
 import type { Plan, Project, Stage } from "@/lib/types";
+import { ACCENTS, FONTS, RADII, SIDEBARS, type AppTheme } from "@/lib/theme";
+import { applyTextEdit } from "@/lib/plan-edit";
 
 export type Msg = { id: string; role: "user" | "assistant"; kind: string; content: string; meta: Record<string, unknown> | null; created_at: string };
 
@@ -116,8 +118,14 @@ export async function saveFile(id: string, path: string, content: string) {
 
 export async function snapshot(id: string, label: string, extra: Record<string, unknown> = {}) {
   const { supabase, project } = await load(id);
+  return saveVersion(supabase, id, project.plan, label, extra);
+}
+
+/** Version row from an already-loaded project (no second auth + fetch). */
+async function saveVersion(supabase: Awaited<ReturnType<typeof load>>["supabase"], id: string, plan: Plan | null, label: string, extra: Record<string, unknown> = {}) {
   const { data: files } = await supabase.from("files").select("path, content").eq("project_id", id);
-  const { data } = await supabase.from("versions").insert({ project_id: id, label, snapshot: { files, plan: project.plan, ...extra } }).select("id, label, created_at, snapshot").single();
+  const { data, error } = await supabase.from("versions").insert({ project_id: id, label, snapshot: { files, plan, ...extra } }).select("id, label, created_at, snapshot").single();
+  if (error) console.error("version save failed:", error.message);
   return data;
 }
 
@@ -193,4 +201,50 @@ export async function savePlan(id: string, next: Plan, via: "inline" | "agents-m
   await supabase.from("projects").update({ plan, name: plan.name, updated_at: touch() }).eq("id", id);
   await supabase.from("versions").insert({ project_id: id, label: via === "inline" ? "Edited the plan by hand" : "Edited AGENTS.md", snapshot: { plan, summary: "Plan edited manually." } });
   return { plan };
+}
+
+const built = (p: Project) => !["plan", "connect"].includes(p.stage);
+
+/** Rewrite the generated app/ files after a copy or look change, so Developer view matches the preview. */
+async function syncAppFiles(supabase: Awaited<ReturnType<typeof load>>["supabase"], project: Project, plan: Plan) {
+  const framework = (project.source as { framework?: string } | null)?.framework ?? "lyzr";
+  const files = filesFor(plan, framework).filter((f) => f.path.startsWith("app/"));
+  await supabase.from("files").upsert(files.map((f) => ({ project_id: project.id, path: f.path, content: f.content, updated_at: touch() })), { onConflict: "project_id,path" });
+}
+
+/** Three AI-proposed looks for the app (cached on the plan). */
+export async function suggestLooks(id: string, fresh = false) {
+  const { supabase, project } = await load(id);
+  if (!project.plan) return { error: "No plan yet." };
+  if (project.plan.looks?.length && !fresh) return { looks: project.plan.looks, plan: project.plan };
+  const r = await designLooks(project.plan);
+  await logUsage(supabase, id, "looks", r.usage);
+  const plan: Plan = { ...project.plan, looks: r.looks, theme: project.plan.theme ?? r.looks[0] };
+  await supabase.from("projects").update({ plan, updated_at: touch() }).eq("id", id);
+  return { looks: r.looks, plan };
+}
+
+export async function setTheme(id: string, t: AppTheme) {
+  const { supabase, project } = await load(id);
+  if (!project.plan) return { error: "No plan yet." };
+  if (!(t.accent in ACCENTS && t.radius in RADII && t.font in FONTS && SIDEBARS.includes(t.sidebar))) return { error: "Unknown look." };
+  const theme: AppTheme = { name: clip(t.name, 40), why: clip(t.why, 160), accent: t.accent, radius: t.radius, font: t.font, sidebar: t.sidebar };
+  const plan: Plan = { ...project.plan, theme };
+  await supabase.from("projects").update({ plan, updated_at: touch() }).eq("id", id);
+  if (built(project)) return { plan, version: await saveVersion(supabase, id, plan, `Changed the look to “${theme.name}”`, { summary: `New look: ${theme.name}.` }) };
+  return { plan, version: null };
+}
+
+/** Click-to-edit in the preview: copy changes apply instantly, cost nothing and are saved as a version. */
+export async function editText(id: string, path: string, value: string) {
+  const { supabase, project } = await load(id);
+  if (!project.plan) return { error: "No plan yet." };
+  const r = applyTextEdit(project.plan, path, value);
+  if (!r) return { error: "That text can't be edited here." };
+  if (r.before.trim() === value.trim()) return { plan: project.plan, version: null };
+  await supabase.from("projects").update({ plan: r.plan, updated_at: touch() }).eq("id", id);
+  if (built(project)) await syncAppFiles(supabase, project, r.plan);
+  const label = `Edited “${clip(r.before, 30)}” → “${clip(value.trim(), 30)}”`;
+  const version = built(project) ? await saveVersion(supabase, id, r.plan, label, { summary: label }) : null;
+  return { plan: r.plan, version };
 }

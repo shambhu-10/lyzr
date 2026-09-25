@@ -1,10 +1,12 @@
 import Link from "next/link";
-import { BookOpen, GraduationCap, MessageCircle, Repeat2 } from "lucide-react";
+import { BookOpen, GraduationCap, MessageCircle } from "lucide-react";
 import { requireUser } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/page-header";
 import { UsePromptButton } from "@/components/explore/use-prompt-button";
 import { Consultant } from "@/components/explore/consultant";
-import { COMMUNITY, LEARN, TEMPLATES } from "@/lib/explore";
+import { LEARN, TEMPLATES } from "@/lib/explore";
+import { getShowcase } from "@/lib/showcase";
+import { ShowcaseCard } from "@/components/community/showcase-card";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -18,6 +20,7 @@ export default async function ExplorePage({ searchParams }: PageProps<"/explore"
   const sp = await searchParams;
   const tab = typeof sp.tab === "string" ? sp.tab : "templates";
   const { profile } = await requireUser();
+  const showcase = tab === "community" ? await getShowcase(24) : [];
 
   return (
     <>
@@ -42,23 +45,17 @@ export default async function ExplorePage({ searchParams }: PageProps<"/explore"
               ))}
             </div>
           )}
-          {tab === "community" && (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {COMMUNITY.map((c) => (
-                <div key={c.name} className="overflow-hidden rounded-xl border bg-card">
-                  <div className="h-32 bg-[linear-gradient(135deg,var(--dev-soft),var(--brand-soft))]" />
-                  <div className="p-4">
-                    <div className="flex items-center justify-between"><span className="font-medium">{c.name}</span><span className="text-[11px] text-muted-foreground">{c.cat}</span></div>
-                    <p className="mt-1 text-sm text-muted-foreground">{c.desc}</p>
-                    <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>by {c.author} · <Repeat2 className="inline size-3.5" /> {c.remixes} remixes</span>
-                      <UsePromptButton prompt={`Remix “${c.name}”: ${c.desc}`} label="Remix" />
-                    </div>
-                  </div>
-                </div>
-              ))}
+          {tab === "community" && (showcase.length ? (
+            <>
+              <p className="mb-4 text-sm text-muted-foreground">Real apps people built and shipped with Architect, shared by their makers. Try one live, or remix a copy into your workspace.</p>
+              <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">{showcase.map((a) => <ShowcaseCard key={a.slug} app={a} />)}</div>
+            </>
+          ) : (
+            <div className="flex flex-col items-center rounded-xl border border-dashed px-6 py-16 text-center">
+              <p className="font-medium">No community apps yet</p>
+              <p className="mt-1 max-w-sm text-sm text-muted-foreground">Ship an app, then turn on “Show in community gallery” on its Live card to be the first.</p>
             </div>
-          )}
+          ))}
           {tab === "consultant" && <Consultant role={profile?.role ?? "product"} />}
           {tab === "learn" && (
             <div className="grid gap-8 lg:grid-cols-[1fr_300px]">

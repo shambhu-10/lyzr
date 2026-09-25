@@ -18,12 +18,13 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
   const sp = await searchParams;
   const filter = typeof sp.f === "string" ? sp.f : "all";
   const q = typeof sp.q === "string" ? sp.q : "";
-  const { supabase } = await requireUser();
+  const { supabase, user } = await requireUser();
   let query = supabase.from("projects").select("*").order("updated_at", { ascending: false });
+  query = filter === "shared" ? query.neq("owner_id", user.id) : query.eq("owner_id", user.id); // shared = invited via a teammate
   if (filter === "live") query = query.eq("stage", "live");
   if (filter === "draft") query = query.neq("stage", "live");
   if (q) query = query.ilike("name", `%${q}%`);
-  const { data } = filter === "shared" ? { data: [] } : await query;
+  const { data } = await query;
   const projects = (data ?? []) as Project[];
 
   return (

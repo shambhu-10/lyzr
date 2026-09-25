@@ -20,10 +20,10 @@ export function CommentThread({ comments, onEdit, onDelete, onClose }: {
           <li key={c.id} className="rounded-lg bg-black/[.03] p-2 text-sm">
             {editing === c.id ? (
               <>
-                <textarea autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} aria-label="Edit comment" className="w-full resize-none rounded-md border border-black/10 bg-white p-1.5 text-sm outline-none focus:border-[#139C8E]" />
+                <textarea autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} aria-label="Edit comment" className="w-full resize-none rounded-md border border-black/10 bg-white p-1.5 text-sm outline-none focus:border-(--a)" />
                 <div className="mt-1 flex justify-end gap-1 text-xs">
                   <button onClick={() => setEditing(null)} className="rounded px-2 py-0.5 text-black/55 hover:bg-black/5">Cancel</button>
-                  <button disabled={!draft.trim()} onClick={() => { onEdit(c.id, draft.trim()); setEditing(null); }} className="flex items-center gap-1 rounded bg-[#139C8E] px-2 py-0.5 font-medium text-white disabled:opacity-40"><Check className="size-3" />Save</button>
+                  <button disabled={!draft.trim()} onClick={() => { onEdit(c.id, draft.trim()); setEditing(null); }} className="flex items-center gap-1 rounded bg-(--a) px-2 py-0.5 font-medium text-white disabled:opacity-40"><Check className="size-3" />Save</button>
                 </div>
               </>
             ) : (

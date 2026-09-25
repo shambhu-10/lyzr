@@ -36,8 +36,8 @@ function Editable({ value, onChange, editable, multiline, className, placeholder
   return multiline ? <textarea rows={3} {...common} /> : <input {...common} />;
 }
 
-export function PlanPanel({ plan, mode, framework, busy, canApprove, canEdit, onApprove, onAddBack, onSave, actual }: {
-  plan: Plan | null; mode: Mode; framework: string; busy: boolean; canApprove: boolean; canEdit: boolean; actual?: { spent: number; seconds?: number };
+export function PlanPanel({ plan, mode, framework, busy, canApprove, canEdit, onApprove, onAddBack, onSave, actual, lookSlot }: {
+  plan: Plan | null; mode: Mode; framework: string; busy: boolean; canApprove: boolean; canEdit: boolean; actual?: { spent: number; seconds?: number }; lookSlot?: React.ReactNode;
   onApprove: () => void; onAddBack: (item: string) => void; onSave: (p: Plan, via: "inline" | "agents-md") => Promise<boolean>;
 }) {
   const [view, setView] = useState<"readable" | "md">("readable");
@@ -116,6 +116,8 @@ export function PlanPanel({ plan, mode, framework, busy, canApprove, canEdit, on
       ) : (
         <>
           <div className="leading-relaxed"><Editable label="summary" multiline value={plan.summary} onChange={(v) => edit("summary", v)} editable={canEdit} className="block w-full" /></div>
+
+          {lookSlot}
 
           <section>
             <h3 className="text-sm font-semibold">What&apos;s in v1 — and what&apos;s later</h3>

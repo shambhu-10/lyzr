@@ -1,3 +1,4 @@
+import type { AppTheme } from "./theme";
 export type Mode = "builder" | "developer";
 export type Stage = "plan" | "connect" | "build" | "test" | "ship" | "live";
 export const STAGES: { id: Exclude<Stage, "live">; label: string }[] = [
@@ -35,10 +36,17 @@ export type Plan = {
   data: string[];
   connections: { id: string; name: string; why: string; kind: "oauth" | "apikey" }[];
   estimate: { credits: number; minutes: number };
+  theme?: AppTheme;
+  looks?: AppTheme[];
 };
 
 export type Project = {
   id: string;
+  owner_id?: string;
+  showcase?: boolean;
+  showcase_author?: string | null;
+  views?: number;
+  remixes?: number;
   name: string;
   slug: string;
   prompt: string;
@@ -47,7 +55,7 @@ export type Project = {
   plan: Plan | null;
   connections: Record<string, "connected" | "sample">;
   demo_data: boolean;
-  source: { repo?: string; stack?: string; framework?: string; template?: boolean; build?: { seconds: number; at: string } } | null;
+  source: { repo?: string; stack?: string; framework?: string; template?: boolean; remixed_from?: string; build?: { seconds: number; at: string } } | null;
   created_at: string;
   updated_at: string;
 };

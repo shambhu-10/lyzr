@@ -1,4 +1,5 @@
 import type { Block, Plan } from "@/lib/types";
+import type { AppTheme } from "@/lib/theme";
 
 /* ---------- offline fallbacks: the demo never dead-ends if the API is unavailable ---------- */
 
@@ -88,4 +89,12 @@ export function fallbackPlan(prompt: string, current?: Plan | null, instruction?
     data: ["Your records and results"],
     connections: [],
   };
+}
+
+export function fallbackLooks(): AppTheme[] {
+  return [
+    { name: "Calm Paper", why: "Warm and readable — great for everyday tools.", accent: "teal", radius: "soft", font: "serif", sidebar: "light" },
+    { name: "Crisp Ops", why: "Dense and focused — for teams who live in it all day.", accent: "indigo", radius: "sharp", font: "sans", sidebar: "dark" },
+    { name: "Friendly Studio", why: "Bright and approachable — for customers and newcomers.", accent: "coral", radius: "round", font: "sans", sidebar: "tint" },
+  ];
 }

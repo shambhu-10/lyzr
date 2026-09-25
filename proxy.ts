@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC = ["/", "/login", "/auth", "/live"];
+const PUBLIC = ["/", "/login", "/auth", "/live", "/remix"];
 
 /**
  * Refresh the Supabase session once per request, before any page, server action or API route runs.

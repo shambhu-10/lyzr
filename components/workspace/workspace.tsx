@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Code2, Database, Eye, FileText, History, KeyRound, MessageSquare, MessageSquarePlus, RotateCcw, ScrollText, Send } from "lucide-react";
+import { Bot, Code2, Database, Eye, FileText, History, KeyRound, MessageSquare, MessageSquarePlus, Palette, RotateCcw, ScrollText, Send, Type } from "lucide-react";
 import { toast } from "sonner";
 import { WorkspaceHeader } from "./header";
 import { Chat } from "./chat";
@@ -16,7 +16,8 @@ import { AppPreview } from "@/components/app-preview/app-preview";
 import { AgentCanvas } from "@/components/agents/agent-canvas";
 import { AgentDrawer } from "@/components/agents/agent-drawer";
 import { Button } from "@/components/ui/button";
-import { askQuestions, deploy, finishBuild, generateUI, quickChange, revertTo, revisePlan, saveFile, savePlan, setConnection, setStage, submitAnswers, type Msg } from "@/lib/actions/workspace";
+import { askQuestions, deploy, editText, finishBuild, generateUI, quickChange, revertTo, revisePlan, saveFile, savePlan, setConnection, setStage, submitAnswers, type Msg } from "@/lib/actions/workspace";
+import { LookPicker } from "./look-picker";
 import { addComment, deleteComment, markComments, updateComment, type Comment } from "@/lib/actions/comments";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { buildSteps, testChecks } from "@/lib/script/build";
@@ -39,18 +40,26 @@ const safeStorage = {
   setItem: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch {} },
 };
 
+const versionRow = (v: unknown): VersionRow => {
+  const x = v as { id: string; label: string; created_at: string; snapshot?: { summary?: string } };
+  return { id: x.id, label: x.label, created_at: x.created_at, summary: x.snapshot?.summary ?? null };
+};
+
 /** Tell the user when a long build finishes while they're in another tab. */
 function notifyDone(name: string) {
   document.title = `✓ ${name} is built — Architect`;
   try { if (document.hidden && "Notification" in window && Notification.permission === "granted") new Notification(`${name} is built`, { body: "Your app passed its build. Come back to test and ship it." }); } catch {}
 }
 
-export function Workspace({ initial, defaultMode, otherSpend, workspaceConnections = [] }: {
+export function Workspace({ initial, defaultMode, otherSpend, workspaceConnections = [], role = "owner", ownerName = "" }: {
   initial: { project: Project; messages: Msg[]; files: FileRow[]; agents: AgentRow[]; versions: VersionRow[]; comments: Comment[] };
   defaultMode: Mode;
   otherSpend: number;
   workspaceConnections?: string[];
+  role?: "owner" | "editor" | "viewer";
+  ownerName?: string;
 }) {
+  const viewer = role === "viewer";
   const [project, setProject] = useState(initial.project);
   const [messages, setMessages] = useState(initial.messages);
   const [files, setFiles] = useState(initial.files);
@@ -63,6 +72,8 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   const [busy, setBusy] = useState<string | null>(null);
   const [planFirst, setPlanFirst] = useState(false);
   const [commenting, setCommenting] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [lookOpen, setLookOpen] = useState(false);
   const [openFile, setOpenFile] = useState("");
   const [codeEdit, setCodeEdit] = useState<ProposedEdit | null>(null);
   const [codeKey, setCodeKey] = useState(0);
@@ -228,6 +239,12 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
     try { const c = await addComment(project.id, t.screen, t.target, body); setComments((x) => [...x, c]); toast.success("Comment added"); }
     catch { toast.error("Couldn't save the comment (has migration 0002 been run?)"); }
   };
+  const onEditText = async (path: string, value: string) => {
+    const r = await editText(project.id, path, value).catch(() => ({ error: "Couldn't save that edit." }));
+    if ("error" in r) { toast.error(r.error); return; }
+    patch({ plan: r.plan });
+    if (r.version) { setVersions((v) => [versionRow(r.version), ...v]); toast.success("Saved — undo anytime in Versions"); }
+  };
   const sendComments = async () => {
     const text = `Apply this feedback from comments on the app:\n${openComments.map((c) => `- On "${c.screen}" › "${c.target}": ${c.body}`).join("\n")}`;
     const ids = openComments.map((c) => c.id);
@@ -253,7 +270,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   const later = plan?.scope.filter((s) => s.status === "later").map((s) => s.item) ?? [];
 
   const stageCard = () => {
-    if (!plan) return null;
+    if (!plan || viewer) return null;
     if (ORDER.indexOf(view) > reached) return null;
     if (view === "connect") return <ConnectCard plan={plan} project={project} onSet={onSetConnection} onStart={startBuild} reusable={workspaceConnections} built={reached > ORDER.indexOf("build")} />;
     if (view === "build") return building ? <BuildCard steps={steps} at={at} mode={mode} paused={paused} onPause={() => setPaused((p) => !p)} remaining={remaining} waitingForAI={!uiReady && steps[at]?.reveal !== undefined}
@@ -263,7 +280,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
         ...(project.demo_data ? [{ label: "Connect real accounts", onClick: () => setView("connect") }] : []),
       ]} />} /> : <BuildCard steps={steps} at={steps.length} mode={mode} paused={false} onPause={() => {}} remaining={0} />;
     if (view === "test") return <TestCard checks={testChecks(plan, project.demo_data)} mode={mode} onFix={() => setView("connect")} onPlayground={() => { setTab("agents"); if (agents[0]) setDrawer(agents[0]); }} onContinue={() => goStage("ship")} />;
-    if (view === "ship") return project.stage === "live" ? <LiveCard project={project} later={later} onAddBack={(s) => change(`Add this from the plan's "later" list: ${s}`)} /> : <ShipCard project={project} onDeploy={onDeploy} onFixConnections={() => setView("connect")} />;
+    if (view === "ship") return project.stage === "live" ? <LiveCard project={project} author={ownerName} later={later} onAddBack={(s) => change(`Add this from the plan's "later" list: ${s}`)} /> : <ShipCard project={project} mode={mode} onDeploy={onDeploy} onFixConnections={() => setView("connect")} onFileChanged={(p, c) => { setFiles((fs) => fs.map((f) => (f.path === p ? { ...f, content: c } : f))); setCodeKey((k) => k + 1); }} />;
     return null;
   };
 
@@ -288,7 +305,8 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
     <div className="min-h-0 flex-1">
           <Chat messages={messages} busy={!!busy} busyLabel={busy ?? ""} placeholder={placeholder} onSend={onSend}
       context={codeChat && openFile ? `@${openFile}` : undefined} onReviewEdit={(e) => setCodeEdit(e as ProposedEdit)}
-      onAnswer={(a, m) => (m.meta?.forChange ? change(`${m.meta.forChange}\nClarification from the user: ${a}`) : onAnswer(a))} planToggle={planFirst} onPlanToggle={setPlanFirst}>
+      onAnswer={(a, m) => (m.meta?.forChange ? change(`${m.meta.forChange}\nClarification from the user: ${a}`) : onAnswer(a))} planToggle={planFirst} onPlanToggle={setPlanFirst}
+      readOnly={viewer ? "You have view-only access. Ask the owner for edit access to make changes." : undefined}>
       {stageCard()}
     </Chat>
     </div>
@@ -303,16 +321,19 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
                 <t.icon className="size-3.5" />{t.label}
               </button>
             ))}
-            {tab === "preview" && canComment && (
+            {tab === "preview" && canComment && !viewer && (
               <div className="ml-auto flex items-center gap-2">
                 {openComments.length > 0 && <Button size="xs" onClick={() => setReviewComments(true)} disabled={!!busy}><Send /> Review &amp; send {openComments.length}</Button>}
-                <Button size="xs" variant={commenting ? "default" : "outline"} onClick={() => setCommenting((c) => !c)}><MessageSquarePlus /> {commenting ? "Done commenting" : "Comment"}</Button>
+                <Button size="xs" variant="outline" onClick={() => setLookOpen(true)} title="Change colours, corners and fonts"><Palette /> Look</Button>
+                <Button size="xs" variant={editing ? "default" : "outline"} onClick={() => { setEditing((v) => !v); setCommenting(false); }} title="Click any text in your app to change it — free, instant"><Type /> {editing ? "Done editing" : "Edit text"}</Button>
+                <Button size="xs" variant={commenting ? "default" : "outline"} onClick={() => { setCommenting((c) => !c); setEditing(false); }}><MessageSquarePlus /> {commenting ? "Done commenting" : "Comment"}</Button>
               </div>
             )}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto bg-muted/30">
-            {tab === "plan" && <PlanPanel plan={plan} mode={mode} framework={framework} busy={!!busy} canApprove={project.stage === "plan"} canEdit={project.stage === "plan" || project.stage === "connect"}
+            {tab === "plan" && <PlanPanel plan={plan} mode={mode} framework={framework} busy={!!busy} canApprove={project.stage === "plan"} canEdit={!viewer && (project.stage === "plan" || project.stage === "connect")}
               actual={reached >= ORDER.indexOf("test") ? { spent: projectSpend(project), seconds: source.build?.seconds } : undefined}
+              lookSlot={plan && project.kind !== "agent" ? <LookPicker projectId={project.id} plan={plan} onPlan={(p) => patch({ plan: p })} disabled={building || viewer} /> : null}
               onApprove={() => { goStage("connect"); toast.success("Plan approved"); }} onAddBack={(item) => revise(`Add back: ${item}`)}
               onSave={async (p, via) => {
                 patch({ plan: p, name: p.name }); // optimistic
@@ -323,12 +344,14 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
             {tab === "preview" && (plan && (revealed || building) ? (
               <div className="h-full p-4">
                 {commenting && <p className="mb-2 text-center text-xs text-muted-foreground">Click any part of the app to leave a comment. Send them to Architect when you&apos;re done.</p>}
+                {editing && <p className="mb-2 text-center text-xs text-muted-foreground">Click any dashed text to change it. Enter saves, Esc cancels. Free, and every edit is a version you can undo.</p>}
                 <AppPreview plan={plan} revealed={revealed} demo={project.demo_data} building={building} projectId={reached >= ORDER.indexOf("test") ? project.id : undefined}
-                  commenting={commenting} comments={openComments} onComment={onComment} onEditComment={onEditComment} onDeleteComment={onDeleteComment} />
+                  commenting={commenting} comments={openComments} onComment={onComment} onEditComment={onEditComment} onDeleteComment={onDeleteComment}
+                  editing={editing && !building} onEditText={onEditText} />
               </div>
             ) : <EmptyPreview stage={plan ? project.stage : "plan"} />)}
             {tab === "agents" && (plan ? <AgentCanvas plan={plan} framework={framework} built={agents.length > 0} onOpen={openAgent} /> : <EmptyPreview stage="plan" />)}
-            {tab === "code" && <CodePanel key={codeKey} files={liveFiles} locked={building && !paused} terminal={terminal} writing={writing} name={project.slug}
+            {tab === "code" && <CodePanel key={codeKey} files={liveFiles} locked={viewer || (building && !paused)} terminal={terminal} writing={writing} name={project.slug}
               projectId={project.id} onOpenFile={setOpenFile} onAsk={(q) => { void askCode(q); }}
               onSave={(p, c) => { setFiles((fs) => fs.map((f) => (f.path === p ? { ...f, content: c } : f))); return saveFile(project.id, p, c); }} />}
             {tab === "env" && <EnvPanel project={project} plan={plan} />}
@@ -346,7 +369,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
 
   return (
     <div className="flex h-screen flex-col">
-      <WorkspaceHeader project={project} mode={mode} onMode={setMode} view={view} onView={setView} credits={credits} />
+      <WorkspaceHeader project={project} mode={mode} onMode={setMode} view={view} onView={setView} credits={credits} role={role} />
       <div className={cn("flex border-b", desktop && "hidden")}>
         {(["chat", "app"] as const).map((p) => (
           <button key={p} onClick={() => setMobilePane(p)} className={cn("flex flex-1 items-center justify-center gap-1.5 py-2 text-sm text-muted-foreground", mobilePane === p && "border-b-2 border-foreground font-medium text-foreground")}>
@@ -377,6 +400,12 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
           <section className={cn("min-h-0 min-w-0 flex-1 flex-col", mobilePane === "app" ? "flex" : "hidden")} aria-label="Your app">{appNode}</section>
         </div>
       )}
+      <Dialog open={lookOpen} onOpenChange={setLookOpen}>
+        <DialogContent className="@container sm:max-w-3xl">
+          <DialogHeader><DialogTitle>Change the look</DialogTitle><DialogDescription>Applies instantly to your preview and live app. Saved as a version you can roll back.</DialogDescription></DialogHeader>
+          {plan && <LookPicker projectId={project.id} plan={plan} onPlan={(p) => patch({ plan: p })} onVersion={(v) => setVersions((x) => [versionRow(v), ...x])} />}
+        </DialogContent>
+      </Dialog>
       <Dialog open={reviewComments} onOpenChange={setReviewComments}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Send {openComments.length} comment{openComments.length === 1 ? "" : "s"} to Architect</DialogTitle>

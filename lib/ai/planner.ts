@@ -4,7 +4,8 @@ import { structured, type Usage } from "./llm";
 import { INTEGRATIONS } from "@/lib/integrations";
 import type { Block, Plan, Question, Screen } from "@/lib/types";
 import { estimate } from "./estimate";
-import { fallbackBlocks, fallbackPlan, fallbackQuestions } from "./fallbacks";
+import { fallbackBlocks, fallbackLooks, fallbackPlan, fallbackQuestions } from "./fallbacks";
+import { ACCENTS, FONTS, RADII, SIDEBARS, type AppTheme } from "@/lib/theme";
 
 /* ---------------- schemas (Groq strict mode: every field required, empty values instead of optional) ---------------- */
 
@@ -59,6 +60,17 @@ const PlanSchema = z.object({
     why: z.string().describe("Plain-language reason, e.g. 'to read your upcoming meetings'"),
     kind: z.enum(["oauth", "apikey"]),
   })).describe("Every EXTERNAL account or key the v1 features (status \"in\") need to work on real data — none for deferred items. Not the database, auth, hosting or AI model — Architect provides those."),
+});
+
+const LooksSchema = z.object({
+  looks: z.array(z.object({
+    name: z.string().describe("Two-word name for the look, e.g. 'Calm Studio'"),
+    why: z.string().describe("One short line on who or what this look suits, plain language"),
+    accent: z.enum(Object.keys(ACCENTS) as [keyof typeof ACCENTS, ...(keyof typeof ACCENTS)[]]),
+    radius: z.enum(Object.keys(RADII) as [keyof typeof RADII, ...(keyof typeof RADII)[]]),
+    font: z.enum(Object.keys(FONTS) as [keyof typeof FONTS, ...(keyof typeof FONTS)[]]).describe("heading font: serif = elegant, sans = modern, mono = technical"),
+    sidebar: z.enum(SIDEBARS),
+  })).min(3).max(3),
 });
 
 const ScreenUISchema = z.object({ blocks: z.array(BlockSchema).min(2).max(5) });
@@ -123,6 +135,13 @@ export async function changeApp(plan: Plan, instruction: string): Promise<Step<{
     `Current app (JSON):\n${JSON.stringify({ name: plan.name, agents: plan.agents, connections: plan.connections, screens: plan.screens })}\n\nChange request: "${instruction}"`, "medium");
   if (r) return { ...r.data, live: true, usage: [r.usage] };
   return { summary: "I couldn't apply that change right now — your app is unchanged.", changes: [], screens: plan.screens, clarify: { needed: false, question: "", options: [] }, live: false, usage: [] };
+}
+
+/** Three clearly different visual directions for the app, chosen to fit its audience. */
+export async function designLooks(plan: Plan): Promise<Step<{ looks: AppTheme[] }>> {
+  const r = await structured(LooksSchema, "looks", "You are a product designer. Propose visual directions for a web app. Make the three options clearly different from each other (different accent, heading font and sidebar). Plain language, no jargon.",
+    `App: ${plan.name} — ${plan.tagline}\n${plan.summary}\n\nPropose 3 looks.`, "low");
+  return r ? { looks: r.data.looks, live: true, usage: [r.usage] } : { looks: fallbackLooks(), live: false, usage: [] };
 }
 
 export { fallbackBlocks } from "./fallbacks";

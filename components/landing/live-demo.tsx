@@ -18,9 +18,9 @@ export function LiveDemo() {
   const [dev, setDev] = useState(false);
   const [file, setFile] = useState("agents/meeting_brief_agent.py");
   return (
-    <div className="overflow-hidden rounded-2xl border bg-background shadow-[0_24px_80px_-32px_rgba(0,0,0,.35)]">
+    <div className="overflow-hidden rounded-2xl border bg-background shadow-[var(--shadow-hero)]">
       <div className="flex items-center gap-3 border-b bg-card px-4 py-2.5">
-        <span className="flex gap-1.5">{[0, 1, 2].map((i) => <span key={i} className="size-2.5 rounded-full bg-border" />)}</span>
+        <span className="flex gap-1.5">{["#FF5F57", "#FEBC2E", "#28C840"].map((c) => <span key={c} className="size-2.5 rounded-full" style={{ background: c }} />)}</span>
         <span className="flex-1 truncate text-center font-mono text-xs text-muted-foreground">architect.app/p/briefly</span>
         <div className="flex rounded-full border p-0.5 text-xs">
           <button onClick={() => setDev(false)} className={cn("flex items-center gap-1 rounded-full px-2.5 py-1", !dev && "bg-brand-soft font-medium text-brand")}><Wand2 className="size-3" />Builder</button>

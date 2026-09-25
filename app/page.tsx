@@ -1,31 +1,41 @@
 import Link from "next/link";
-import { ArrowRight, Check, Code2, GitBranch, Plug, ShieldCheck, Sparkles, Wallet, Wand2 } from "lucide-react";
+import { ArrowRight, Check, Code2, GitBranch, GitFork, Palette, ShieldCheck, Sparkles, Type, Users, Wallet, Wand2 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { HeroPrompt } from "@/components/landing/hero-prompt";
 import { LiveDemo } from "@/components/landing/live-demo";
+import { ShowcaseCard } from "@/components/community/showcase-card";
+import { getShowcase } from "@/lib/showcase";
+import { INTEGRATIONS } from "@/lib/integrations";
+
+export const revalidate = 60; // gallery counts refresh at most once a minute; the page stays static
+
+const REPO = "https://github.com/shambhu-10/lyzr";
 
 const STEPS = [
   { n: "01", t: "Plan", d: "Architect asks the right questions, then writes a plan you can read — with what's in, what's later, and what it will cost." },
   { n: "02", t: "Connect", d: "Link Google, Slack or your API keys before anything is built, so your app works on real data — not samples." },
   { n: "03", t: "Build", d: "Watch your screens come together live. Developers can open the code, diffs and terminal at any moment." },
   { n: "04", t: "Test", d: "Every build is checked in plain language. Talk to your agents in a playground before anyone else does." },
-  { n: "05", t: "Ship", d: "A pre-flight check catches missing keys and security gaps, then one click gives you a live URL." },
+  { n: "05", t: "Ship", d: "A real security check catches exposed keys and gaps, fixes them in one click, then gives you a live URL." },
 ];
 
 const FRAMEWORKS = ["Lyzr", "LangGraph", "CrewAI", "OpenAI Agents SDK", "Google ADK", "Mastra"];
 
-export default function Landing() {
+export default async function Landing() {
+  const apps = await getShowcase(6);
+  const remixes = apps.reduce((a, x) => a + x.remixes, 0);
+
   return (
-    <div className="min-h-screen">
-      <header className="sticky top-0 z-30 border-b border-transparent bg-background/80 backdrop-blur">
+    <div className="min-h-screen overflow-x-clip">
+      <header className="sticky top-0 z-30 border-b border-border/60 bg-background/75 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
           <Logo />
           <nav className="hidden items-center gap-7 text-sm text-muted-foreground md:flex">
             <a href="#how" className="hover:text-foreground">How it works</a>
             <a href="#lenses" className="hover:text-foreground">Builders &amp; developers</a>
-            <a href="#agents" className="hover:text-foreground">Agents</a>
-            <a href="#trust" className="hover:text-foreground">Why Architect</a>
+            {apps.length > 0 && <a href="#showcase" className="hover:text-foreground">Showcase</a>}
+            <a href="#features" className="hover:text-foreground">What&apos;s new</a>
           </nav>
           <div className="flex items-center gap-2">
             <Button variant="ghost" asChild><Link href="/login">Sign in</Link></Button>
@@ -34,119 +44,141 @@ export default function Landing() {
         </div>
       </header>
 
-      <section className="relative overflow-hidden px-5 pt-20 pb-24 text-center">
-        <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[520px] bg-[radial-gradient(60%_60%_at_50%_0%,var(--brand-soft),transparent)]" />
-        <p className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border bg-card px-3 py-1 text-xs text-muted-foreground">
-          <span className="size-1.5 rounded-full bg-brand" /> Architect 2.0 — now for builders <em>and</em> developers
-        </p>
-        <h1 className="mx-auto max-w-3xl text-5xl leading-[1.05] font-semibold tracking-tight md:text-7xl">
+      <section className="relative px-5 pt-20 pb-20 text-center md:pt-28">
+        <div className="mesh pointer-events-none absolute inset-0 -z-10" />
+        <div className="grid-lines pointer-events-none absolute inset-x-0 top-0 -z-10 h-[560px] opacity-60" />
+        <a href={apps.length ? "#showcase" : "#features"} className="rise-1 mx-auto mb-7 inline-flex items-center gap-2 rounded-full border bg-card/80 py-1 pr-3 pl-1 text-xs text-muted-foreground shadow-[var(--shadow-soft)] backdrop-blur hover:text-foreground">
+          <span className="rounded-full bg-spark-soft px-2 py-0.5 font-medium text-spark">New</span>
+          Architect 2.0 — for builders <em>and</em> developers <ArrowRight className="size-3" />
+        </a>
+        <h1 className="rise-2 mx-auto max-w-4xl text-5xl leading-[1.02] font-semibold tracking-tight md:text-7xl">
           Describe it. Build it. <span className="font-display font-normal whitespace-nowrap italic text-brand">Own it.</span>
         </h1>
-        <p className="mx-auto mt-6 max-w-xl text-lg text-muted-foreground">
+        <p className="rise-3 mx-auto mt-6 max-w-xl text-lg text-muted-foreground">
           Turn an idea into a working agentic app — planned with you, connected to your real tools, and shipped to a live URL. Switch to the code whenever you want.
         </p>
-        <div className="mt-10"><HeroPrompt /></div>
+        <div className="rise-4 mt-10"><HeroPrompt /></div>
+        {apps.length > 0 && (
+          <p className="rise-4 mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <span className="flex -space-x-1.5">{apps.slice(0, 4).map((a) => <span key={a.slug} className="grid size-6 place-items-center rounded-full border-2 border-background bg-brand-soft text-[10px] font-semibold text-brand">{(a.author ?? a.name)[0]}</span>)}</span>
+            <span><b className="font-medium text-foreground">{apps.length} live apps</b> in the community gallery{remixes > 0 && <> · {remixes} remixes</>}</span>
+          </p>
+        )}
       </section>
 
-      <section className="px-5 pb-24">
-        <div className="mx-auto max-w-5xl">
+      <div className="border-y bg-card/40 py-4" aria-label="Works with">
+        <div className="relative mx-auto max-w-6xl overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)]">
+          <div className="marquee flex w-max gap-10 text-sm text-muted-foreground">
+            {[...INTEGRATIONS, ...INTEGRATIONS].map((i, k) => (
+              <span key={k} className="flex items-center gap-2 whitespace-nowrap"><span className="size-2 rounded-full" style={{ background: i.color }} />{i.name}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <section className="px-5 py-24">
+        <div className="reveal mx-auto max-w-5xl">
           <p className="mb-4 text-center text-sm text-muted-foreground">This is the real app renderer — click a meeting, then flip to Developer to see the generated code.</p>
           <LiveDemo />
         </div>
       </section>
 
-      <section id="lenses" className="border-y bg-card/50 px-5 py-24">
+      {apps.length > 0 && (
+        <section id="showcase" className="scroll-mt-16 border-y bg-card/50 px-5 py-24">
+          <div className="mx-auto max-w-6xl">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div className="max-w-2xl">
+                <div className="text-xs font-medium tracking-wide text-brand uppercase">Built on Architect</div>
+                <h2 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">Real apps, shipped by real people.</h2>
+                <p className="mt-3 text-muted-foreground">Every card is a live app its maker chose to share — with real view and remix counts. Try one, or remix a copy and make it yours.</p>
+              </div>
+              <Button variant="outline" asChild><Link href="/explore?tab=community">See the whole gallery <ArrowRight /></Link></Button>
+            </div>
+            <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {apps.map((a) => <div key={a.slug} className="reveal"><ShowcaseCard app={a} /></div>)}
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section id="lenses" className="scroll-mt-16 px-5 py-24">
         <div className="mx-auto max-w-6xl">
           <h2 className="max-w-2xl text-3xl font-semibold tracking-tight md:text-4xl">One project. Two ways to see it.</h2>
           <p className="mt-3 max-w-2xl text-muted-foreground">Flip one switch in any project. Nothing is lost, nothing is duplicated — it&apos;s the same app, shown the way you think.</p>
           <div className="mt-12 grid gap-6 md:grid-cols-2">
             <LensCard
               icon={<Wand2 className="size-4" />} title="Builder view" who="For business teams, founders, consultants"
-              points={["Plain-language plan and progress", "See each screen appear as it's built", "Visual agent map with guardrails", "One-click connect and ship"]}
+              points={["Plain-language plan and progress", "Pick a look, edit text right in the app", "Visual agent map with guardrails", "One-click connect and ship"]}
             >
               <div className="space-y-2 p-4">
                 <div className="flex items-center gap-2 text-xs"><Check className="size-3.5 text-success" /> Planned 3 screens</div>
                 <div className="flex items-center gap-2 text-xs"><Check className="size-3.5 text-success" /> Connected Google Calendar</div>
                 <div className="flex items-center gap-2 text-xs"><span className="size-3.5 animate-pulse rounded-full bg-brand/60" /> Building “Meeting context”…</div>
                 <div className="mt-3 grid grid-cols-3 gap-2">
-                  <div className="h-16 rounded-md bg-brand-soft" /><div className="h-16 rounded-md shimmer" /><div className="h-16 rounded-md bg-muted" />
+                  <div className="h-16 rounded-md bg-brand-soft" /><div className="h-16 rounded-md shimmer" /><div className="h-16 rounded-md bg-spark-soft" />
                 </div>
               </div>
             </LensCard>
             <LensCard
               dev icon={<Code2 className="size-4" />} title="Developer view" who="For engineers who want control"
-              points={["File tree, editor, live diffs, terminal", "Agents in LangGraph, CrewAI, OpenAI SDK…", "Traces, evals, env vars, branches", "Two-way GitHub sync and PRs"]}
+              points={["Editor with AI autocomplete, ⌘K edits, diffs", "Agents in LangGraph, CrewAI, OpenAI SDK…", "Encrypted env vars, logs, evals", "AGENTS.md, zip export, Open in Cursor"]}
             >
               <pre className="overflow-hidden p-4 font-mono text-[11px] leading-5">
                 <span className="text-muted-foreground">app/page.tsx</span>{"\n"}
-                <span className="text-destructive">- activeAgentId</span>{"\n"}
-                <span className="text-success">+ runningAgentId</span>{"\n"}
-                <span className="text-muted-foreground">$ next build  ✓ 0 errors · GET / 200</span>
+                <span className="text-destructive">- const key = &quot;gsk_••••3f9a&quot;</span>{"\n"}
+                <span className="text-success">+ const key = process.env.GROQ_API_KEY</span>{"\n"}
+                <span className="text-muted-foreground">✓ security check passed · moved 1 secret to vault</span>
               </pre>
             </LensCard>
           </div>
+          <div className="reveal mt-8 flex flex-wrap items-center gap-2 text-sm">
+            <span className="mr-1 text-muted-foreground">Agents in any framework — build new or import yours:</span>
+            {FRAMEWORKS.map((f) => <span key={f} className="rounded-full border bg-card px-3 py-1">{f}</span>)}
+          </div>
         </div>
       </section>
 
-      <section id="how" className="px-5 py-24">
+      <section id="how" className="scroll-mt-16 border-y bg-card/50 px-5 py-24">
         <div className="mx-auto max-w-6xl">
           <h2 className="text-3xl font-semibold tracking-tight md:text-4xl">Five clear steps. Always know where you are.</h2>
-          <div className="mt-12 grid gap-px overflow-hidden rounded-2xl border bg-border md:grid-cols-5">
-            {STEPS.map((s) => (
-              <div key={s.n} className="bg-card p-6">
-                <div className="font-mono text-xs text-brand">{s.n}</div>
-                <div className="mt-3 font-semibold">{s.t}</div>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{s.d}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section id="agents" className="border-y bg-card/50 px-5 py-24">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 md:grid-cols-2">
-          <div>
-            <h2 className="text-3xl font-semibold tracking-tight md:text-4xl">Agents in any framework.</h2>
-            <p className="mt-3 text-muted-foreground">Build new agents or import the ones you already have. Configure, test, trace and evaluate them right next to your app — no jumping between tools.</p>
-            <div className="mt-6 flex flex-wrap gap-2">
-              {FRAMEWORKS.map((f) => <span key={f} className="rounded-full border bg-background px-3 py-1 text-sm">{f}</span>)}
-            </div>
-          </div>
-          <div className="rounded-2xl border bg-background p-6">
-            <div className="flex items-center justify-between text-xs text-muted-foreground"><span>Briefly · agents</span><span>3 nodes</span></div>
-            <div className="mt-6 flex items-center justify-between gap-2 text-xs">
-              {["Calendar event", "Meeting Brief Agent", "Briefing note"].map((n, i) => (
-                <div key={n} className="flex flex-1 items-center gap-2">
-                  <div className={`flex-1 rounded-lg border px-3 py-3 text-center ${i === 1 ? "border-brand bg-brand-soft font-medium" : "bg-card"}`}>{n}</div>
-                  {i < 2 && <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />}
+          <ol className="mt-12 grid gap-6 md:grid-cols-5 md:gap-4">
+            {STEPS.map((s, i) => (
+              <li key={s.n} className="reveal relative">
+                <div className="flex items-center gap-3">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-full border-2 border-brand bg-background font-mono text-xs font-semibold text-brand">{s.n}</span>
+                  {i < STEPS.length - 1 && <span className="hidden h-px flex-1 bg-gradient-to-r from-brand/60 to-border md:block" />}
                 </div>
-              ))}
-            </div>
-          </div>
+                <div className="mt-4 font-semibold">{s.t}</div>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{s.d}</p>
+              </li>
+            ))}
+          </ol>
         </div>
       </section>
 
-      <section id="trust" className="px-5 py-24">
+      <section id="features" className="scroll-mt-16 px-5 py-24">
         <div className="mx-auto max-w-6xl">
-          <h2 className="text-3xl font-semibold tracking-tight md:text-4xl">Built to be trusted.</h2>
-          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              { i: <Wallet className="size-5" />, t: "Know the cost first", d: "Every build shows an estimate before you commit, and a receipt after." },
-              { i: <Sparkles className="size-5" />, t: "Our mistakes are free", d: "When the AI fixes its own error, you don't pay. It stops after 3 tries and asks you." },
-              { i: <ShieldCheck className="size-5" />, t: "Secure by default", d: "Row-level security and a plain-language security check before anything goes live." },
-              { i: <GitBranch className="size-5" />, t: "You own the code", d: "Standard code, two-way GitHub sync, export anytime. No lock-in." },
-            ].map((c) => (
-              <div key={c.t} className="rounded-2xl border bg-card p-6">
-                <div className="text-brand">{c.i}</div>
-                <div className="mt-4 font-semibold">{c.t}</div>
-                <p className="mt-2 text-sm text-muted-foreground">{c.d}</p>
-              </div>
-            ))}
+          <h2 className="max-w-2xl text-3xl font-semibold tracking-tight md:text-4xl">Everything you need to go from idea to live — and trust it.</h2>
+          <div className="mt-12 grid auto-rows-[minmax(170px,auto)] gap-4 md:grid-cols-6">
+            <Bento className="md:col-span-4" tone="brand" icon={<Palette />} title="Pick a look" d="Three AI-designed directions, rendered as real previews of your app. Switch colours, corners and fonts anytime — even after it's live.">
+              <div className="mt-5 flex gap-2">{["#139C8E", "#4F5BD5", "#E0654A", "#7C4DDB", "#C98410"].map((c) => <span key={c} className="h-9 flex-1 rounded-lg shadow-[var(--shadow-soft)]" style={{ background: c }} />)}</div>
+            </Bento>
+            <Bento className="md:col-span-2" icon={<Type />} title="Edit text in place" d="Click any label in your app and type. Instant, free, and every edit is a version you can undo." />
+            <Bento className="md:col-span-2" icon={<ShieldCheck />} title="Security check that fixes things" d="Finds keys written in code, missing settings and agents that act without asking — then fixes them in one click." />
+            <Bento className="md:col-span-2" icon={<GitFork />} title="Remix anything" d="Every shared app has a Remix button. Get the plan, screens and agents — connect your own accounts." />
+            <Bento className="md:col-span-2" icon={<Users />} title="Build as a team" d="Invite teammates to edit or view with a link. Everyone works on the same project." />
+            <Bento className="md:col-span-3" tone="spark" icon={<Wallet />} title="Know the cost first" d="Every build shows an estimate before you commit and what it actually cost after. Our mistakes are free — the AI stops after 3 tries and asks you." />
+            <Bento className="md:col-span-3" tone="dev" icon={<GitBranch />} title="You own the code" d="Standard Next.js code, AGENTS.md, zip export and Open in Cursor. No lock-in, ever." />
           </div>
-          <div className="mt-16 flex flex-col items-center gap-4 rounded-3xl bg-primary px-6 py-14 text-center text-primary-foreground">
-            <Plug className="size-6 opacity-70" />
-            <h3 className="text-3xl font-semibold tracking-tight">What will you build first?</h3>
-            <Button size="lg" variant="secondary" asChild><Link href="/login">Start building free <ArrowRight /></Link></Button>
+
+          <div className="relative mt-20 overflow-hidden rounded-3xl bg-primary px-6 py-16 text-center text-primary-foreground">
+            <div className="mesh pointer-events-none absolute inset-0 opacity-60" />
+            <div className="relative flex flex-col items-center gap-4">
+              <Sparkles className="size-6 text-spark" />
+              <h3 className="text-3xl font-semibold tracking-tight md:text-4xl">What will you build first?</h3>
+              <p className="max-w-md text-primary-foreground/70">Start from a sentence, a template, or someone else&apos;s app.</p>
+              <Button size="lg" variant="secondary" asChild><Link href="/login">Start building free <ArrowRight /></Link></Button>
+            </div>
           </div>
         </div>
       </section>
@@ -154,16 +186,28 @@ export default function Landing() {
       <footer className="border-t px-5 py-8 text-sm text-muted-foreground">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4">
           <span>Architect 2.0 · a product concept by Shambhu Kumar</span>
-          <span className="flex gap-5"><a href="#">Privacy</a><a href="#">Security</a><a href="#">Terms</a></span>
+          <span className="flex gap-5"><a href={REPO} target="_blank" rel="noreferrer" className="hover:text-foreground">GitHub</a><a href={`${REPO}#readme`} target="_blank" rel="noreferrer" className="hover:text-foreground">How it&apos;s built</a><Link href="/login" className="hover:text-foreground">Sign in</Link></span>
         </div>
       </footer>
     </div>
   );
 }
 
+function Bento({ icon, title, d, className, tone, children }: { icon: React.ReactNode; title: string; d: string; className?: string; tone?: "brand" | "spark" | "dev"; children?: React.ReactNode }) {
+  const t = tone === "brand" ? "bg-brand-soft/60 [&_.ic]:bg-brand [&_.ic]:text-brand-foreground" : tone === "spark" ? "bg-spark-soft/60 [&_.ic]:bg-spark [&_.ic]:text-white" : tone === "dev" ? "bg-dev-soft/60 [&_.ic]:bg-dev [&_.ic]:text-white" : "bg-card [&_.ic]:bg-muted [&_.ic]:text-foreground";
+  return (
+    <div className={`reveal flex flex-col rounded-2xl border p-6 shadow-[var(--shadow-soft)] transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-lift)] ${t} ${className ?? ""}`}>
+      <span className="ic grid size-9 place-items-center rounded-lg [&_svg]:size-4">{icon}</span>
+      <div className="mt-4 font-semibold">{title}</div>
+      <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{d}</p>
+      {children}
+    </div>
+  );
+}
+
 function LensCard({ icon, title, who, points, children, dev }: { icon: React.ReactNode; title: string; who: string; points: string[]; children: React.ReactNode; dev?: boolean }) {
   return (
-    <div className="overflow-hidden rounded-2xl border bg-background">
+    <div className="reveal overflow-hidden rounded-2xl border bg-background shadow-[var(--shadow-soft)]">
       <div className="p-6">
         <div className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium ${dev ? "bg-dev-soft text-dev" : "bg-brand-soft text-brand"}`}>{icon}{title}</div>
         <p className="mt-3 text-sm text-muted-foreground">{who}</p>

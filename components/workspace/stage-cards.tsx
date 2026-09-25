@@ -8,6 +8,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ConsentDialog } from "@/components/connect/consent-dialog";
 import { connectGoogleCalendar } from "@/components/connect/google-calendar";
 import { setSecret } from "@/lib/actions/secrets";
+import { addApprovalStep, moveSecretToVault, securityScan } from "@/lib/actions/security";
+import { setShowcase } from "@/lib/actions/community";
+import { Switch } from "@/components/ui/switch";
+import type { Finding } from "@/lib/security-scan";
 import { integrationById, type Integration } from "@/lib/integrations";
 import type { BuildStep, Check as TestCheck } from "@/lib/script/build";
 import type { Mode, Plan, Project } from "@/lib/types";
@@ -196,33 +200,71 @@ export function TestCard({ checks, mode, onFix, onPlayground, onContinue }: { ch
 
 /* ---------------- Ship ---------------- */
 
-export function ShipCard({ project, onDeploy, onFixConnections }: { project: Project; onDeploy: (t: "preview" | "production") => Promise<void>; onFixConnections: () => void }) {
+export function ShipCard({ project, mode, onDeploy, onFixConnections, onFileChanged }: {
+  project: Project; mode: Mode; onDeploy: (t: "preview" | "production") => Promise<void>; onFixConnections: () => void; onFileChanged: (path: string, content: string) => void;
+}) {
   const [target, setTarget] = useState<"preview" | "production">("production");
   const [phase, setPhase] = useState(-1);
+  const [findings, setFindings] = useState<Finding[] | null>(null);
+  const [fixing, setFixing] = useState<string | null>(null);
+  const [override, setOverride] = useState(false);
   const PHASES = ["Building for production", "Uploading assets", "Setting up secure domain", "Going live"];
-  const checks = [
-    { label: "Security scan — data locked to each user (row-level security)", ok: true },
-    { label: "Secrets stored in vault, none in code", ok: true },
-    { label: "Accessibility — contrast & keyboard navigation", ok: true },
-    { label: project.demo_data ? "Still using sample data" : "Real accounts connected", ok: !project.demo_data },
-  ];
+  const rescan = () => securityScan(project.id).then(setFindings).catch(() => setFindings([]));
+  useEffect(() => { void rescan(); }, [project.id, project.demo_data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const high = findings?.filter((f) => f.severity === "high") ?? [];
+  const blocked = high.length > 0 && !override && target === "production";
+
+  const fix = async (f: Finding) => {
+    if (f.fix === "connect") return onFixConnections();
+    setFixing(f.id);
+    if (f.fix === "vault" && f.file && f.line) {
+      const r = await moveSecretToVault(project.id, f.file, f.line).catch(() => ({ error: "Couldn't move the secret." }));
+      if ("error" in r) toast.error(r.error); else { onFileChanged(r.path, r.content); toast.success(`Moved to the vault as ${r.env} — the code now reads it safely`); }
+    } else if (f.fix === "approval") {
+      const r = await addApprovalStep(project.id, f.id.replace(/^agent:/, "")).catch(() => ({ error: "Couldn't update the agent." }));
+      if ("error" in r) toast.error(r.error as string); else toast.success("Approval step added");
+    }
+    await rescan();
+    setFixing(null);
+  };
   const deploy = async () => {
     for (let i = 0; i < PHASES.length; i++) { setPhase(i); await new Promise((r) => setTimeout(r, 900)); }
     await onDeploy(target);
     setPhase(-1);
   };
+  const passed = [
+    "Data locked to each signed-in user (row-level security)",
+    ...(findings && !findings.some((f) => f.rule === "hardcoded-secret") ? ["No secrets written in the code"] : []),
+    ...(findings && !findings.some((f) => f.rule === "missing-env") ? ["Every key the code needs is set"] : []),
+    ...(findings && !findings.some((f) => f.rule === "agent-autonomy") ? ["Agents ask before they act"] : []),
+  ];
+
   return (
     <Card title="Ready to ship" icon={<Rocket className="size-3.5 text-brand" />}>
-      <div className="text-xs font-medium text-muted-foreground">Pre-flight check</div>
-      <ul className="mt-2 space-y-1.5 text-sm">
-        {checks.map((c) => (
-          <li key={c.label} className="flex items-start gap-2">
-            {c.ok ? <Check className="mt-0.5 size-3.5 text-success" /> : <AlertTriangle className="mt-0.5 size-3.5 text-warning" />}
-            <span className="flex-1">{c.label}</span>
-            {!c.ok && <button onClick={onFixConnections} className="text-xs underline underline-offset-2">Connect</button>}
-          </li>
-        ))}
-      </ul>
+      <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
+        <span className="flex items-center gap-1.5"><ShieldCheck className="size-3.5" /> Security check</span>
+        <button onClick={() => { setFindings(null); void rescan(); }} className="underline-offset-2 hover:underline">Re-scan</button>
+      </div>
+      {!findings ? <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-3.5 animate-spin" /> Scanning code, keys, connections and agents…</p> : (
+        <ul className="mt-2 space-y-1.5 text-sm">
+          {findings.map((f) => (
+            <li key={f.id} className={cn("rounded-lg border p-2", f.severity === "high" ? "border-destructive/30 bg-destructive/5" : f.severity === "medium" ? "border-warning/40 bg-warning-soft/50" : "bg-muted/40")}>
+              <div className="flex items-start gap-2">
+                <AlertTriangle className={cn("mt-0.5 size-3.5 shrink-0", f.severity === "high" ? "text-destructive" : "text-warning")} />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium">{f.title}</div>
+                  <div className="text-xs text-muted-foreground">{f.detail}</div>
+                  {mode === "developer" && f.file && <div className="mt-1 truncate font-mono text-[11px] text-dev">{f.file}:{f.line} · {f.rule}{f.excerpt ? ` · ${f.excerpt}` : ""}</div>}
+                  {f.fix && <Button size="xs" className="mt-2" variant={f.severity === "high" ? "default" : "outline"} disabled={!!fixing} onClick={() => fix(f)}>
+                    {fixing === f.id && <Loader2 className="animate-spin" />}{f.fix === "vault" ? "Move to vault" : f.fix === "connect" ? "Connect" : "Add approval"}
+                  </Button>}
+                </div>
+              </div>
+            </li>
+          ))}
+          {passed.map((p) => <li key={p} className="flex items-start gap-2 px-2"><Check className="mt-0.5 size-3.5 text-success" /><span className="flex-1">{p}</span></li>)}
+        </ul>
+      )}
       <div className="mt-3 grid grid-cols-2 gap-2">
         {(["preview", "production"] as const).map((t) => (
           <button key={t} onClick={() => setTarget(t)} className={cn("rounded-lg border p-2 text-left text-xs", target === t && "border-brand bg-brand-soft/60")}>
@@ -234,7 +276,11 @@ export function ShipCard({ project, onDeploy, onFixConnections }: { project: Pro
       <div className="mt-2 flex items-center rounded-lg border bg-background px-2 text-xs"><span className="text-muted-foreground">https://</span><input defaultValue={project.slug} className="min-w-0 flex-1 bg-transparent py-1.5 font-mono outline-none" aria-label="Subdomain" /><span className="text-muted-foreground">.architect.app</span></div>
       <button className="mt-1 text-[11px] text-muted-foreground underline underline-offset-2" onClick={() => toast("Custom domains: add a CNAME to cname.architect.app, we handle SSL.")}>Use my own domain</button>
       {project.demo_data && target === "production" && <p className="mt-2 rounded-md bg-warning-soft p-2 text-[11px]">Heads up: visitors will see sample data until you connect real accounts.</p>}
-      <Button className="mt-3 w-full" disabled={phase >= 0} onClick={deploy}>
+      {blocked && (
+        <p className="mt-2 rounded-md bg-destructive/10 p-2 text-[11px]">Fix the {high.length === 1 ? "issue" : `${high.length} issues`} in red before going public — or{" "}
+          <button className="font-medium underline underline-offset-2" onClick={() => { if (confirm("Ship with a secret exposed in the code? Anyone who can read it could use it.")) setOverride(true); }}>ship anyway</button>.</p>
+      )}
+      <Button className="mt-3 w-full" disabled={phase >= 0 || !findings || blocked} onClick={deploy}>
         {phase >= 0 ? <><Loader2 className="animate-spin" /> {PHASES[phase]}…</> : <><Rocket /> Deploy to {target}</>}
       </Button>
     </Card>
@@ -243,8 +289,15 @@ export function ShipCard({ project, onDeploy, onFixConnections }: { project: Pro
 
 /* ---------------- Live ---------------- */
 
-export function LiveCard({ project, later, onAddBack }: { project: Project; later: string[]; onAddBack: (s: string) => void }) {
+export function LiveCard({ project, later, onAddBack, author }: { project: Project; later: string[]; onAddBack: (s: string) => void; author: string }) {
   const url = `${useOrigin()}/live/${project.slug}`;
+  const [inGallery, setInGallery] = useState(!!project.showcase);
+  const [shownAs, setShownAs] = useState(project.showcase_author ?? author);
+  const saveGallery = async (on: boolean, name = shownAs) => {
+    setInGallery(on);
+    const r = await setShowcase(project.id, on, name).catch(() => ({ error: "Couldn't update the gallery." }));
+    if ("error" in r) { toast.error(r.error); setInGallery(!on); } else if (on) toast.success("Listed in the community gallery — others can try and remix it");
+  };
   return (
     <Card title="Live" icon={<span className="size-2 rounded-full bg-success" />}>
       <div className="flex items-center gap-2 rounded-lg border bg-background p-2 text-xs">
@@ -253,9 +306,17 @@ export function LiveCard({ project, later, onAddBack }: { project: Project; late
         <Button size="icon-xs" variant="ghost" asChild aria-label="Open live app"><a href={`/live/${project.slug}`} target="_blank"><ExternalLink /></a></Button>
       </div>
       <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-        <div className="rounded-lg bg-muted p-2"><div className="text-base font-semibold">0</div>visitors</div>
-        <div className="rounded-lg bg-muted p-2"><div className="text-base font-semibold">0</div>agent runs</div>
+        <div className="rounded-lg bg-muted p-2"><div className="text-base font-semibold">{project.views ?? 0}</div>views</div>
+        <div className="rounded-lg bg-muted p-2"><div className="text-base font-semibold">{project.remixes ?? 0}</div>remixes</div>
         <div className="rounded-lg bg-muted p-2"><div className="text-base font-semibold">${projectSpend(project).toFixed(2)}</div>total spent</div>
+      </div>
+      <div className="mt-3 rounded-lg border p-2.5">
+        <label className="flex items-center justify-between gap-3 text-sm"><span><span className="block font-medium">Show in community gallery</span><span className="text-xs text-muted-foreground">Others can try it and remix a copy. Your data and accounts are never shared.</span></span>
+          <Switch checked={inGallery} onCheckedChange={(v) => saveGallery(v)} aria-label="Show in community gallery" /></label>
+        {inGallery && (
+          <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">Show my name as
+            <Input value={shownAs} onChange={(e) => setShownAs(e.target.value)} onBlur={() => saveGallery(true)} placeholder="Leave empty to stay anonymous" className="h-7 flex-1 text-xs" /></label>
+        )}
       </div>
       {later.length > 0 && (
         <div className="mt-3">

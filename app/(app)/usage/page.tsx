@@ -7,8 +7,8 @@ import type { Project } from "@/lib/types";
 
 
 export default async function UsagePage() {
-  const { supabase } = await requireUser();
-  const { data } = await supabase.from("projects").select("*").order("updated_at", { ascending: false });
+  const { supabase, user } = await requireUser();
+  const { data } = await supabase.from("projects").select("*").eq("owner_id", user.id).order("updated_at", { ascending: false });
   const projects = (data ?? []) as Project[];
   const { data: events } = await supabase.from("usage_events").select("id, kind, model, input_tokens, output_tokens, ms, cost_usd, created_at, projects(name)").order("created_at", { ascending: false }).limit(40);
   const ev = (events ?? []) as unknown as { id: string; kind: string; model: string; input_tokens: number; output_tokens: number; ms: number; cost_usd: number | null; created_at: string; projects: { name: string } | null }[];
