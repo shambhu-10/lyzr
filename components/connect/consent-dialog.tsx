@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { IntegrationIcon } from "@/components/integration-icon";
 import { Check, Loader2, ShieldCheck } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ export function ConsentDialog({ integration, open, onOpenChange, onAllow }: { in
         <DialogHeader>
           <div className="mb-2 flex items-center gap-3">
             <LogoMark /><span className="text-muted-foreground">⇄</span>
-            <span className="grid size-7 place-items-center rounded-lg text-xs font-bold text-white" style={{ background: integration.color }}>{integration.name[0]}</span>
+            <IntegrationIcon id={integration.id} name={integration.name} color={integration.color} className="size-7 text-xs" />
           </div>
           <DialogTitle>Connect {integration.name}</DialogTitle>
           <DialogDescription>Architect will be able to:</DialogDescription>

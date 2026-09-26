@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { IntegrationIcon } from "@/components/integration-icon";
 import { KeyRound, Plus, Trash2 } from "lucide-react";
 import { deleteSecret, listSecrets, setSecret, type SecretRow } from "@/lib/actions/secrets";
 import { toast } from "sonner";
@@ -20,7 +21,7 @@ export function ConnectionsBoard({ connected }: { connected: Record<string, stri
 
   const Row = ({ i }: { i: Integration }) => (
     <div className="flex items-center gap-3 rounded-xl border bg-card p-3">
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg text-sm font-bold text-white" style={{ background: i.color }}>{i.name[0]}</span>
+      <IntegrationIcon id={i.id} name={i.name} color={i.color} />
       <div className="min-w-0 flex-1">
         <div className="font-medium">{i.name}</div>
         <div className="truncate text-xs text-muted-foreground">{connected[i.id] ? `Connected · ${i.scopes[0]}` : i.id === "google-calendar" ? "Real Google sign-in · read-only" : i.cat}</div>

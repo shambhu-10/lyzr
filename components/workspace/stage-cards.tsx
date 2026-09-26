@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ConsentDialog } from "@/components/connect/consent-dialog";
 import { connectGoogleCalendar } from "@/components/connect/google-calendar";
 import { setSecret } from "@/lib/actions/secrets";
+import { IntegrationIcon } from "@/components/integration-icon";
 import { addApprovalStep, moveSecretToVault, securityScan } from "@/lib/actions/security";
 import { setShowcase } from "@/lib/actions/community";
 import { Switch } from "@/components/ui/switch";
@@ -52,9 +53,8 @@ export function ConnectCard({ plan, project, onSet, onStart, reusable = [], buil
               return (
                 <li key={c.id} className="rounded-lg border p-2.5">
                   <div className="flex items-center gap-2.5">
-                    <span className="grid size-7 shrink-0 place-items-center rounded-md text-xs font-bold text-white" style={{ background: integ?.color ?? "#64748b" }}>
-                      {c.kind === "apikey" ? <KeyRound className="size-3.5" /> : c.name[0]}
-                    </span>
+                    {integ ? <IntegrationIcon id={integ.id} name={integ.name} color={integ.color} className="size-7 rounded-md text-xs" />
+                      : <span className="grid size-7 shrink-0 place-items-center rounded-md bg-slate-500 text-xs font-bold text-white">{c.kind === "apikey" ? <KeyRound className="size-3.5" /> : c.name[0]}</span>}
                     <div className="min-w-0 flex-1"><div className="text-sm font-medium">{c.name}</div><div className="text-xs text-muted-foreground">{c.why}</div></div>
                     {s === "connected" && <span className="flex items-center gap-1 text-xs text-success"><Check className="size-3.5" />Connected{c.id === "google-calendar" && " · real"}</span>}
                     {s === "sample" && <span className="rounded bg-warning-soft px-1.5 py-0.5 text-[11px]">Sample data</span>}
