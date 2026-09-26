@@ -292,11 +292,11 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
 
   const TABS: { id: Tab; label: string; icon: typeof Eye; dev?: boolean }[] = [
     { id: "plan", label: "Plan", icon: FileText },
-    { id: "preview", label: "Preview", icon: Eye },
     { id: "agents", label: "Agents", icon: Bot },
     { id: "code", label: "Code", icon: Code2, dev: true },
     { id: "env", label: "Env", icon: KeyRound, dev: true },
     { id: "logs", label: "Logs", icon: ScrollText, dev: true },
+    { id: "preview", label: "Preview", icon: Eye },
     { id: "data", label: "Data", icon: Database },
     { id: "versions", label: "Versions", icon: History },
   ];
