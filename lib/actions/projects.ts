@@ -46,10 +46,17 @@ export async function renameProject(id: string, name: string) {
   revalidatePath(`/p/${id}`);
 }
 
+/** Owner only (RLS). Removes the app with everything that belongs to it: chat, files, versions, data, live URL, its agents. */
 export async function deleteProject(id: string) {
-  const { supabase } = await requireUser();
-  await supabase.from("projects").delete().eq("id", id);
+  const { supabase, user } = await requireUser();
+  const { data: p } = await supabase.from("projects").select("owner_id").eq("id", id).single();
+  if (!p || p.owner_id !== user.id) return { error: "Only the owner can delete this project." };
+  await supabase.from("agents").delete().eq("project_id", id); // agents would otherwise be orphaned (project_id → null)
+  const { error, count } = await supabase.from("projects").delete({ count: "exact" }).eq("id", id);
+  if (error || !count) return { error: "Couldn't delete the project." };
   revalidatePath("/projects");
+  revalidatePath("/home");
+  return { ok: true };
 }
 
 export async function listProjectsLite() {

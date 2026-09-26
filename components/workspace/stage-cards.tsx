@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { AlertTriangle, BarChart3, Check, Copy, ExternalLink, KeyRound, Loader2, Pause, Play, Plug, Rocket, ShieldCheck, Terminal } from "lucide-react";
+import { AlertTriangle, BarChart3, Check, Copy, ExternalLink, Eye, KeyRound, Loader2, Pause, Play, Plug, Rocket, ShieldCheck, Terminal } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -203,7 +203,6 @@ export function TestCard({ checks, mode, onFix, onPlayground, onContinue }: { ch
 export function ShipCard({ project, mode, onDeploy, onFixConnections, onFileChanged }: {
   project: Project; mode: Mode; onDeploy: (t: "preview" | "production") => Promise<void>; onFixConnections: () => void; onFileChanged: (path: string, content: string) => void;
 }) {
-  const [target, setTarget] = useState<"preview" | "production">("production");
   const [phase, setPhase] = useState(-1);
   const [findings, setFindings] = useState<Finding[] | null>(null);
   const [fixing, setFixing] = useState<string | null>(null);
@@ -212,7 +211,7 @@ export function ShipCard({ project, mode, onDeploy, onFixConnections, onFileChan
   const rescan = () => securityScan(project.id).then(setFindings).catch(() => setFindings([]));
   useEffect(() => { void rescan(); }, [project.id, project.demo_data]); // eslint-disable-line react-hooks/exhaustive-deps
   const high = findings?.filter((f) => f.severity === "high") ?? [];
-  const blocked = high.length > 0 && !override && target === "production";
+  const blocked = high.length > 0 && !override;
 
   const fix = async (f: Finding) => {
     if (f.fix === "connect") return onFixConnections();
@@ -229,7 +228,7 @@ export function ShipCard({ project, mode, onDeploy, onFixConnections, onFileChan
   };
   const deploy = async () => {
     for (let i = 0; i < PHASES.length; i++) { setPhase(i); await new Promise((r) => setTimeout(r, 900)); }
-    await onDeploy(target);
+    await onDeploy("production");
     setPhase(-1);
   };
   const passed = [
@@ -265,24 +264,23 @@ export function ShipCard({ project, mode, onDeploy, onFixConnections, onFileChan
           {passed.map((p) => <li key={p} className="flex items-start gap-2 px-2"><Check className="mt-0.5 size-3.5 text-success" /><span className="flex-1">{p}</span></li>)}
         </ul>
       )}
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        {(["preview", "production"] as const).map((t) => (
-          <button key={t} onClick={() => setTarget(t)} className={cn("rounded-lg border p-2 text-left text-xs", target === t && "border-brand bg-brand-soft/60")}>
-            <span className="block font-medium capitalize">{t}</span>
-            <span className="text-muted-foreground">{t === "preview" ? "Private link for feedback" : "Public URL for everyone"}</span>
-          </button>
-        ))}
-      </div>
-      <div className="mt-2 flex items-center rounded-lg border bg-background px-2 text-xs"><span className="text-muted-foreground">https://</span><input defaultValue={project.slug} className="min-w-0 flex-1 bg-transparent py-1.5 font-mono outline-none" aria-label="Subdomain" /><span className="text-muted-foreground">.architect.app</span></div>
+      <div className="mt-3 flex items-center rounded-lg border bg-background px-2 text-xs"><span className="text-muted-foreground">https://</span><input defaultValue={project.slug} className="min-w-0 flex-1 bg-transparent py-1.5 font-mono outline-none" aria-label="Subdomain" /><span className="text-muted-foreground">.architect.app</span></div>
       <button className="mt-1 text-[11px] text-muted-foreground underline underline-offset-2" onClick={() => toast("Custom domains: add a CNAME to cname.architect.app, we handle SSL.")}>Use my own domain</button>
-      {project.demo_data && target === "production" && <p className="mt-2 rounded-md bg-warning-soft p-2 text-[11px]">Heads up: visitors will see sample data until you connect real accounts.</p>}
+      {project.demo_data && <p className="mt-2 rounded-md bg-warning-soft p-2 text-[11px]">Heads up: visitors will see sample data until you connect real accounts.</p>}
       {blocked && (
         <p className="mt-2 rounded-md bg-destructive/10 p-2 text-[11px]">Fix the {high.length === 1 ? "issue" : `${high.length} issues`} in red before going public — or{" "}
           <button className="font-medium underline underline-offset-2" onClick={() => { if (confirm("Ship with a secret exposed in the code? Anyone who can read it could use it.")) setOverride(true); }}>ship anyway</button>.</p>
       )}
-      <Button className="mt-3 w-full" disabled={phase >= 0 || !findings || blocked} onClick={deploy}>
-        {phase >= 0 ? <><Loader2 className="animate-spin" /> {PHASES[phase]}…</> : <><Rocket /> Deploy to {target}</>}
-      </Button>
+      <div className="mt-3 grid grid-cols-[auto_1fr] gap-2">
+        {/* Preview = open the app as it is now, privately, in a new tab — no deployment */}
+        <Button variant="outline" asChild title="Open your app in a new tab — private to you and your team, nothing is deployed">
+          <a href={`/preview/${project.id}`} target="_blank" rel="noreferrer"><Eye /> Preview</a>
+        </Button>
+        <Button disabled={phase >= 0 || !findings || blocked} onClick={deploy}>
+          {phase >= 0 ? <><Loader2 className="animate-spin" /> {PHASES[phase]}…</> : <><Rocket /> Deploy to production</>}
+        </Button>
+      </div>
+      <p className="mt-1.5 text-[11px] text-muted-foreground">Preview is private to you and your team. Production gives everyone a public URL.</p>
     </Card>
   );
 }

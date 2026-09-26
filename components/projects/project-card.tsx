@@ -3,6 +3,7 @@ import { Bot, FolderInput, LayoutTemplate } from "lucide-react";
 import type { Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { AppThumb } from "@/components/app-preview/app-thumb";
+import { ProjectMenu } from "./project-menu";
 
 const STAGE_LABEL: Record<Project["stage"], string> = {
   plan: "Planning", connect: "Connecting tools", build: "Building", test: "Testing", ship: "Ready to ship", live: "Live",
@@ -26,10 +27,17 @@ export function StageBadge({ stage }: { stage: Project["stage"] }) {
   );
 }
 
-export function ProjectCard({ p }: { p: Project }) {
+export function ProjectCard({ p, owned = false }: { p: Project; owned?: boolean }) {
   const Icon = p.kind === "agent" ? Bot : p.kind === "import" ? FolderInput : LayoutTemplate;
   return (
-    <Link href={`/p/${p.id}`} className="group flex flex-col overflow-hidden rounded-xl border bg-card transition hover:border-foreground/20 hover:shadow-[var(--shadow-lift)]">
+    <div className="group relative">
+    {/* actions sit outside the link so opening the menu never navigates; shown on hover (always on touch screens) */}
+    {owned && (
+      <div className="absolute top-2 right-2 z-10 transition md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 md:has-[[data-state=open]]:opacity-100">
+        <ProjectMenu id={p.id} name={p.name} liveSlug={p.stage === "live" ? p.slug : undefined} />
+      </div>
+    )}
+    <Link href={`/p/${p.id}`} className="flex h-full flex-col overflow-hidden rounded-xl border bg-card transition hover:border-foreground/20 hover:shadow-[var(--shadow-lift)]">
       <div className="relative h-32 overflow-hidden border-b bg-[linear-gradient(135deg,var(--brand-soft),var(--muted))]">
         {p.plan && (p.plan.trigger || p.plan.screens.some((x) => x.blocks?.length)) ? (
           <AppThumb plan={p.plan} className="absolute inset-x-3 top-3 rounded-t-md border shadow-sm transition duration-500 group-hover:-translate-y-1" />
@@ -46,5 +54,6 @@ export function ProjectCard({ p }: { p: Project }) {
         <div className="mt-auto flex items-center justify-between pt-1"><StageBadge stage={p.stage} /><span className="text-[11px] text-muted-foreground">{timeAgo(p.updated_at)}</span></div>
       </div>
     </Link>
+    </div>
   );
 }

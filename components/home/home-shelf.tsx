@@ -10,7 +10,7 @@ import type { Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** Bottom panel on Home (Lovable-style): recent projects or templates, one tab at a time. */
-export function HomeShelf({ projects }: { projects: Project[] }) {
+export function HomeShelf({ projects, userId }: { projects: Project[]; userId: string }) {
   const [tab, setTab] = useState<"recent" | "templates">(projects.length ? "recent" : "templates");
   return (
     <section className="rounded-t-3xl border border-b-0 bg-card/80 px-4 pt-3 pb-10 shadow-[0_-12px_40px_-24px_rgb(0_0_0/.35)] backdrop-blur md:px-6">
@@ -27,7 +27,7 @@ export function HomeShelf({ projects }: { projects: Project[] }) {
       </div>
       {tab === "recent" ? (
         projects.length ? (
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{projects.map((p) => <ProjectCard key={p.id} p={p} />)}</div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{projects.map((p) => <ProjectCard key={p.id} p={p} owned={p.owner_id === userId} />)}</div>
         ) : (
           <div className="mt-4 flex flex-col items-center gap-3 rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
             <p>Your projects will show up here. New to Architect? Open a ready-made sample and click around — nothing to set up.</p>

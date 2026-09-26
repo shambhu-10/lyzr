@@ -5,7 +5,7 @@ import { HeroTitle } from "@/components/landing/hero-title";
 import type { Project } from "@/lib/types";
 
 export default async function HomePage() {
-  const { supabase, profile } = await requireUser();
+  const { supabase, profile, user } = await requireUser();
   const { data } = await supabase.from("projects").select("*").order("updated_at", { ascending: false }).limit(4);
   const projects = (data ?? []) as Project[];
   const first = (profile?.full_name ?? "").split(" ")[0];
@@ -18,7 +18,7 @@ export default async function HomePage() {
         <p className="mt-4 text-base text-muted-foreground md:text-lg">What should we build{first ? `, ${first}` : ""}?</p>
         <div className="mt-8 w-full"><Composer mode={profile?.default_mode ?? "builder"} /></div>
       </div>
-      <div className="mx-auto w-full max-w-6xl px-2 md:px-6"><HomeShelf projects={projects} /></div>
+      <div className="mx-auto w-full max-w-6xl px-2 md:px-6"><HomeShelf projects={projects} userId={user.id} /></div>
     </div>
   );
 }

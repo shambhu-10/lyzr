@@ -44,7 +44,7 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
           </form>
         </div>
         {projects.length ? (
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{projects.map((p) => <ProjectCard key={p.id} p={p} />)}</div>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{projects.map((p) => <ProjectCard key={p.id} p={p} owned={p.owner_id === user.id} />)}</div>
         ) : (
           <div className="mt-6 flex flex-col items-center rounded-xl border border-dashed px-6 py-16 text-center">
             <p className="font-medium">{filter === "shared" ? "Nothing shared with you yet" : q ? `No projects match “${q}”` : filter === "live" ? "Nothing is live yet" : "No projects yet"}</p>
