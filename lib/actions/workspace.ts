@@ -1,6 +1,7 @@
 "use server";
 import { requireUser } from "@/lib/supabase/server";
-import { changeApp, clarify, designLooks, generateScreen, makePlan, makeTechSpec } from "@/lib/ai/planner";
+import { changeApp, clarify, designLooks, detectKind, generateScreen, makePlan, makeTechSpec } from "@/lib/ai/planner";
+import { seedExampleRows } from "@/lib/actions/app-data";
 import { providedEnv, sanitizeTech } from "@/lib/tech-spec";
 import { llmEnabled } from "@/lib/ai/llm";
 import { filesFor } from "@/lib/script/files";
@@ -33,9 +34,17 @@ export async function askQuestions(id: string, developer = false) {
   const { data: existing } = await supabase.from("messages").select("id").eq("project_id", id).eq("kind", "questions").limit(1);
   if (existing?.length) return null;
   const lens = project.source?.lens ? project.source.lens === "developer" : developer; // the choice made in the prompt box wins
-  const q = await clarify(project.prompt, lens, { kind: project.kind, stack: lens ? toStack(project.source?.stack) : undefined, framework: project.source?.framework });
+  let kind = project.kind;
+  if (project.source?.autoKind) {
+    const d = await detectKind(project.prompt);
+    await logUsage(supabase, id, "kind", d.usage);
+    kind = d.kind;
+    await supabase.from("projects").update({ kind, source: { ...project.source, autoKind: false }, updated_at: touch() }).eq("id", id);
+  }
+  const q = await clarify(project.prompt, lens, { kind, stack: lens ? toStack(project.source?.stack) : undefined, framework: project.source?.framework });
   await logUsage(supabase, id, "questions", q.usage);
-  return say(supabase, id, { role: "assistant", kind: "questions", content: q.intro, meta: { questions: q.questions, live: q.live } });
+  const message = await say(supabase, id, { role: "assistant", kind: "questions", content: kind === "agent" && project.source?.autoKind ? `This sounds like a standalone agent, so I'll plan it as one (no screens). ${q.intro}` : q.intro, meta: { questions: q.questions, live: q.live } });
+  return { message, kind };
 }
 
 export async function submitAnswers(id: string, answers: string) {
@@ -43,6 +52,7 @@ export async function submitAnswers(id: string, answers: string) {
   const userMsg = await say(supabase, id, { role: "user", kind: "answers", content: answers });
   const plan = await makePlan(project.prompt, answers, null, undefined, project.kind);
   const { live, usage, ...clean } = plan;
+  if (project.source?.theme && !clean.trigger) clean.theme = project.source.theme; // look picked in the Home "+" menu
   await logUsage(supabase, id, "plan", usage);
   // First plan names the product — give the public URL that name too (it's not live yet, so nothing breaks).
   const slug = `${clean.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 28) || "app"}-${crypto.randomUUID().slice(0, 4)}`;
@@ -110,6 +120,7 @@ export async function finishBuild(id: string, seconds?: number) {
       instructions: `${a.role}. Ground every answer in the provided data; say what's missing instead of guessing. Never send or post anything without the user's approval.`,
     })));
   await supabase.from("versions").insert({ project_id: id, label: "First build", snapshot: { files, plan: project.plan, summary: `Built ${project.plan.screens.length} screens and ${project.plan.agents.length} agent${project.plan.agents.length > 1 ? "s" : ""}.` } });
+  await seedExampleRows(id).catch(() => {}); // example rows for the Data tab (skipped if migration 0005 isn't applied)
   const source = { ...(project.source ?? {}), build: { seconds: Math.round(seconds ?? 0), at: touch() } };
   await supabase.from("projects").update({ stage: "test", source, updated_at: touch() }).eq("id", id);
   const message = await say(supabase, id, { role: "assistant", kind: "text", content: `Build finished. ${files.length} files, ${project.plan.agents.length} agent${project.plan.agents.length > 1 ? "s" : ""}${project.plan.screens.length ? ", 1 issue fixed for free" : ""}. Next, I'll test it.` });

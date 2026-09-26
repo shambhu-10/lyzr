@@ -9,7 +9,7 @@ const W = 1.9; // machine width in em of the title — about as big as on archit
  * "Architect" with Leonardo's flying machine resting on the A (as on architect.new). On the first visit of a session it
  * beats its wings and "2.0" emerges; afterwards everything is simply there. Hover the machine to see it flap again.
  */
-export function HeroTitle() {
+export function HeroTitle({ className = "text-[2.6rem] sm:text-[3.2rem] md:text-[3.8rem]" }: { className?: string }) {
   const [ready, setReady] = useState(false);
   const [two, setTwo] = useState(false);
   const [flap, setFlap] = useState(0); // bump to replay a wing-beat burst
@@ -25,7 +25,7 @@ export function HeroTitle() {
   }, [ready]);
 
   return (
-    <h1 className="relative mx-auto text-[2.6rem] leading-none font-semibold tracking-[-0.04em] sm:text-[3.2rem] md:text-[3.8rem]">
+    <h1 className={`relative mx-auto leading-none font-semibold tracking-[-0.04em] ${className}`}>
       <span className="relative inline-block">
         A
         {/* decorative: kept out of the heading's accessible name; hovering it makes it beat its wings */}

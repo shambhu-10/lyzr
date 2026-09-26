@@ -172,6 +172,35 @@ export async function changeApp(plan: Plan, instruction: string): Promise<Step<{
   return { summary: "I couldn't apply that change right now — your app is unchanged.", changes: [], screens: plan.screens, clarify: { needed: false, question: "", options: [] }, live: false, usage: [] };
 }
 
+const KindSchema = z.object({ kind: z.enum(["app", "agent"]), reason: z.string() });
+
+/** App (screens people use) or standalone agent (runs from a trigger, no UI of its own)? Used when the user didn't choose. */
+export async function detectKind(prompt: string): Promise<Step<{ kind: "app" | "agent" }>> {
+  const r = await structured(KindSchema, "kind", "Classify a build request. APP = something with screens people open and use (dashboard, portal, tracker, form, CRM). AGENT = a standalone AI worker with no UI of its own that runs from a trigger (chat message, API call, schedule, Slack, email) — e.g. 'an agent that triages my inbox every morning'. If both, choose app.",
+    `Request:\n"""${prompt}"""`, "low");
+  if (r) return { kind: r.data.kind, live: true, usage: [r.usage] };
+  const agentish = /\b(agent|bot|assistant)\b/i.test(prompt) && !/\b(app|dashboard|screen|portal|page|tracker|crm)\b/i.test(prompt);
+  return { kind: agentish ? "agent" : "app", live: false, usage: [] };
+}
+
+const SeedSchema = z.object({
+  tables: z.array(z.object({ name: z.string(), rows: z.array(z.object({ values: z.array(z.object({ column: z.string(), value: z.string() })) })) })),
+});
+
+/** A few realistic example rows per table, so the first build's Data tab isn't empty (marked "example" in the UI). */
+export async function makeSeedRows(plan: Plan, tables: TechSpec["tables"]): Promise<Step<{ rows: { table: string; data: Record<string, string> }[] }>> {
+  if (!tables.length) return { rows: [], live: false, usage: [] };
+  const r = await structured(SeedSchema, "seed", "You write realistic example database rows for a new app. Specific, believable values (real-sounding names, dates, amounts). 3 rows per table. Use exactly the given column names.",
+    `App: ${plan.name} — ${plan.summary}\nTables:\n${tables.map((t) => `${t.name}(${t.columns.map((c) => `${c.name} ${c.type}`).join(", ")})`).join("\n")}`, "low");
+  if (!r) return { rows: [], live: false, usage: [] };
+  const rows = r.data.tables.flatMap((t) => {
+    const tb = tables.find((x) => x.name === t.name);
+    if (!tb) return [];
+    return t.rows.slice(0, 5).map((row) => ({ table: tb.name, data: Object.fromEntries(row.values.filter((v) => tb.columns.some((c) => c.name === v.column)).map((v) => [v.column, v.value.slice(0, 500)])) }));
+  });
+  return { rows, live: true, usage: [r.usage] };
+}
+
 /** Developer view of the plan: data model, API routes and env, fitted to the chosen stack. */
 export async function makeTechSpec(plan: Plan, stack: Stack, framework: string): Promise<Step<{ tech: TechSpec }>> {
   const r = await structured(TechSchema, "tech", "You are a senior full-stack engineer writing a concise technical spec for a v1. Be concrete and minimal: only tables, routes and keys the plan needs. Use snake_case for tables and columns.",

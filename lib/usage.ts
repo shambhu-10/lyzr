@@ -16,4 +16,5 @@ export function stageSpend(p: { stage: Stage; plan: Plan | null }) {
 }
 
 export const projectSpend = (p: { stage: Stage; plan: Plan | null }) => Math.round(stageSpend(p).reduce((a, x) => a + x.cost, 0) * 100) / 100;
-export const balance = (projects: { stage: Stage; plan: Plan | null }[]) => Math.max(0, STARTING_CREDITS - projects.reduce((a, p) => a + projectSpend(p), 0));
+/** $20 on sign-up + admin-granted bonus (profiles.bonus_credits) − what projects have spent. */
+export const balance = (projects: { stage: Stage; plan: Plan | null }[], bonus = 0) => Math.max(0, STARTING_CREDITS + Number(bonus || 0) - projects.reduce((a, p) => a + projectSpend(p), 0));

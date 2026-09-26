@@ -2,9 +2,9 @@ import Link from "next/link";
 import { BookOpen, GraduationCap, MessageCircle } from "lucide-react";
 import { requireUser } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/page-header";
-import { UsePromptButton } from "@/components/explore/use-prompt-button";
 import { Consultant } from "@/components/explore/consultant";
-import { LEARN, TEMPLATES } from "@/lib/explore";
+import { LEARN } from "@/lib/explore";
+import { TemplateLibrary } from "@/components/explore/template-library";
 import { getShowcase } from "@/lib/showcase";
 import { ShowcaseCard } from "@/components/community/showcase-card";
 import { cn } from "@/lib/utils";
@@ -32,19 +32,7 @@ export default async function ExplorePage({ searchParams }: PageProps<"/explore"
           ))}
         </nav>
         <div className="py-8">
-          {tab === "templates" && (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {TEMPLATES.map((t) => (
-                <div key={t.title} className="flex flex-col rounded-xl border bg-card p-4">
-                  <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{t.cat}</span>
-                  <div className="mt-2 font-medium">{t.title}</div>
-                  <p className="mt-1 flex-1 text-sm text-muted-foreground">{t.desc}</p>
-                  <div className="mt-3 flex flex-wrap gap-1">{t.tools.map((x) => <span key={x} className="rounded bg-muted px-1.5 py-0.5 text-[11px]">{x}</span>)}</div>
-                  <div className="mt-4"><UsePromptButton prompt={t.prompt} /></div>
-                </div>
-              ))}
-            </div>
-          )}
+          {tab === "templates" && <TemplateLibrary />}
           {tab === "community" && (showcase.length ? (
             <>
               <p className="mb-4 text-sm text-muted-foreground">Real apps people built and shipped with Architect, shared by their makers. Try one live, or remix a copy into your workspace.</p>

@@ -63,7 +63,7 @@ export type Project = {
   plan: Plan | null;
   connections: Record<string, "connected" | "sample">;
   demo_data: boolean;
-  source: { repo?: string; language?: string; stack?: Stack; framework?: string; template?: boolean; remixed_from?: string; lens?: Mode; build?: { seconds: number; at: string } } | null;
+  source: { repo?: string; language?: string; stack?: Stack; framework?: string; template?: boolean; remixed_from?: string; lens?: Mode; autoKind?: boolean; theme?: AppTheme; build?: { seconds: number; at: string } } | null;
   created_at: string;
   updated_at: string;
 };
@@ -75,4 +75,5 @@ export type Profile = {
   role: string | null;
   default_mode: Mode;
   onboarded: boolean;
+  bonus_credits?: number;
 };

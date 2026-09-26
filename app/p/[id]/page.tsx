@@ -36,6 +36,7 @@ export default async function ProjectPage({ params }: PageProps<"/p/[id]">) {
       otherSpend={(others ?? []).reduce((a, p) => a + projectSpend(p), 0)}
       role={role}
       ownerName={(profile?.full_name ?? "").split(" ")[0]}
+      bonus={Number(profile?.bonus_credits ?? 0)}
     />
     </>
   );

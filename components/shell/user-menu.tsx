@@ -1,26 +1,28 @@
 "use client";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTheme } from "next-themes";
-import { LogOut, Moon, Sun } from "lucide-react";
+import { CreditCard, LogOut, Settings } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
+/** Profile avatar (top right): who you are, settings, billing, sign out. */
 export function UserMenu({ name, email }: { name: string; email: string }) {
   const router = useRouter();
-  const { theme, setTheme } = useTheme();
   const initials = (name || email).split(/[\s@.]/).filter(Boolean).slice(0, 2).map((s) => s[0]?.toUpperCase()).join("");
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="mt-2 flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left text-sm hover:bg-sidebar-accent">
-        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-semibold text-brand">{initials}</span>
-        <span className="min-w-0"><span className="block truncate font-medium">{name || "You"}</span><span className="block truncate text-xs text-muted-foreground">{email}</span></span>
+      <DropdownMenuTrigger aria-label="Your profile" className="grid size-9 place-items-center rounded-full border-2 border-brand/60 bg-brand-soft text-xs font-semibold text-brand transition hover:border-brand">
+        {initials}
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start" className="w-56">
-        <DropdownMenuLabel className="truncate">{email}</DropdownMenuLabel>
+      <DropdownMenuContent align="end" className="w-60">
+        <DropdownMenuLabel className="font-normal">
+          <span className="block truncate text-sm font-medium text-foreground">{name || "You"}</span>
+          <span className="block truncate text-xs text-muted-foreground">{email}</span>
+        </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-          {theme === "dark" ? <Sun /> : <Moon />} {theme === "dark" ? "Light" : "Dark"} appearance
-        </DropdownMenuItem>
+        <DropdownMenuItem asChild><Link href="/settings"><Settings /> Settings</Link></DropdownMenuItem>
+        <DropdownMenuItem asChild><Link href="/usage"><CreditCard /> Usage &amp; billing</Link></DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onClick={async () => { await createClient().auth.signOut(); router.push("/"); router.refresh(); }}>
           <LogOut /> Sign out
         </DropdownMenuItem>

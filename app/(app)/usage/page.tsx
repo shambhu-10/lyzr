@@ -7,7 +7,7 @@ import type { Project } from "@/lib/types";
 
 
 export default async function UsagePage() {
-  const { supabase, user } = await requireUser();
+  const { supabase, user, profile } = await requireUser();
   const { data } = await supabase.from("projects").select("*").eq("owner_id", user.id).order("updated_at", { ascending: false });
   const projects = (data ?? []) as Project[];
   const { data: events } = await supabase.from("usage_events").select("id, kind, model, input_tokens, output_tokens, ms, cost_usd, created_at, projects(name)").order("created_at", { ascending: false }).limit(40);
@@ -26,7 +26,7 @@ export default async function UsagePage() {
     <>
       <PageHeader title="Usage & billing" description="Know what you spend, where, and why — before and after every build." actions={<Button>Top up credits</Button>} />
       <div className="grid gap-6 px-6 py-6 md:px-10 lg:grid-cols-3">
-        <Stat label="Balance" value={`$${balance(projects).toFixed(2)}`} note={`Free plan · $${STARTING_CREDITS} on sign-up`} />
+        <Stat label="Balance" value={`$${balance(projects, profile?.bonus_credits).toFixed(2)}`} note={`Free plan · $${STARTING_CREDITS} on sign-up${Number(profile?.bonus_credits) ? ` + $${Number(profile?.bonus_credits).toFixed(0)} bonus` : ""}`} />
         <Stat label="Spent this month" value={`$${spent.toFixed(2)}`} note={`${projects.length} project${projects.length === 1 ? "" : "s"}`} />
         <Stat label="Self-fixes (free)" value={`${rows.filter((r) => r.stages.includes("build")).length}`} note="AI fixing its own errors is never billed" />
 

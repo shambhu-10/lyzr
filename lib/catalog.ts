@@ -14,6 +14,14 @@ export const MODELS = [
   { id: "qwen/qwen3.8-27b", label: "Qwen 3.8 27B · Groq" },
 ] as const;
 
+/** Providers on the roadmap — shown in the model picker as "Soon", not selectable. */
+export const SOON_MODELS = [
+  { provider: "OpenAI", models: ["GPT-5", "GPT-5 mini"] },
+  { provider: "Anthropic", models: ["Claude Opus 5.5", "Claude Sonnet 5", "Claude Haiku 4.5"] },
+  { provider: "Google", models: ["Gemini 2.5 Pro", "Gemini 2.5 Flash"] },
+  { provider: "Mistral", models: ["Mistral Large"] },
+] as const;
+
 /** Stack options. Each one changes the generated code (lib/script/files.ts) and the tech spec. */
 export const STACK = {
   frontend: [{ id: "nextjs", label: "Next.js (App Router)" }, { id: "vite", label: "React + Vite" }],

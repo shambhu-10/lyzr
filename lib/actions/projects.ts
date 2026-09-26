@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/supabase/server";
 import { FRAMEWORKS, toStack } from "@/lib/catalog";
+import { THEME_PRESETS, type AppTheme } from "@/lib/theme";
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32) || "project";
@@ -17,7 +18,11 @@ export async function createProject(form: FormData) {
   const { supabase } = await requireUser();
   const prompt = String(form.get("prompt") ?? "").trim().slice(0, 4000);
   if (!prompt) return;
-  const kind = form.get("kind") === "agent" ? "agent" : "app";
+  const k = form.get("kind");
+  const kind = k === "agent" ? "agent" : "app";
+  const autoKind = k === "auto"; // nobody picked "Build an agent": Architect decides app vs agent from the prompt
+  let theme: AppTheme | undefined; // a look picked in the "+" menu, applied when the plan is written
+  try { const t = JSON.parse(String(form.get("look") ?? "null")); theme = THEME_PRESETS.find((p) => p.name === t?.name); } catch {}
   const fw = String(form.get("framework") ?? "lyzr");
   const framework = FRAMEWORKS.some((f) => f.id === fw) ? fw : "lyzr";
   const lens = form.get("lens") === "developer" ? "developer" : "builder";
@@ -27,7 +32,7 @@ export async function createProject(form: FormData) {
   const name = draftName(prompt);
   const { data, error } = await supabase
     .from("projects")
-    .insert({ name, prompt, kind, slug: `${slugify(name)}-${crypto.randomUUID().slice(0, 4)}`, source: { framework, template, lens, stack } })
+    .insert({ name, prompt, kind, slug: `${slugify(name)}-${crypto.randomUUID().slice(0, 4)}`, source: { framework, template, lens, stack, autoKind, ...(theme ? { theme } : {}) } })
     .select("id")
     .single();
   if (error) throw error;

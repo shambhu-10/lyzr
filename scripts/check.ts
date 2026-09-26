@@ -126,3 +126,14 @@ assert.ok(!aSteps.some((s) => s.reveal !== undefined) && aSteps.some((s) => s.id
 const aFiles = filesFor(agentPlan, "lyzr", DEFAULT_STACK);
 assert.ok(!aFiles.some((f) => f.role === "screen") && aFiles.some((f) => f.path === "app/api/agents/[agent]/route.ts"));
 console.log("stack + tech spec + agent projects ok");
+
+// App data: forms save into the best-matching table, under snake_case keys.
+import { colKey, pickTable } from "../lib/app-data";
+const tbls = [{ name: "clients", columns: [{ name: "name" }, { name: "email" }] }, { name: "deals", columns: [{ name: "title" }, { name: "value" }, { name: "stage" }] }];
+assert.equal(colKey("Deal value ($)"), "deal_value");
+assert.equal(colKey("  Email address "), "email_address");
+assert.equal(pickTable(tbls, ["title", "value"], "Add a deal"), "deals");
+assert.equal(pickTable(tbls, ["name", "email"], "New contact"), "clients");
+assert.equal(pickTable(tbls, ["notes"], "Log a new deal"), "deals", "falls back to words in the form title");
+assert.equal(pickTable([], ["x"], "Anything"), "submissions");
+console.log("app data ok");

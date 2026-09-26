@@ -10,6 +10,7 @@ import { chatWithAgent, updateAgent } from "@/lib/actions/agents";
 import { EvalsPanel } from "./evals-panel";
 import { agentCode } from "@/lib/script/files";
 import { FRAMEWORKS, frameworkLabel } from "@/lib/catalog";
+import { ModelPick, Pick } from "@/components/pick";
 import type { AgentRow } from "@/lib/workspace-types";
 import type { Mode } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,7 @@ export function AgentBody({ agent, mode, onChange }: { agent: AgentRow; mode: Mo
   const [a, setA] = useState(agent);
   const [dirty, setDirty] = useState(false);
   const [runs, setRuns] = useState<Turn[]>([]);
+  const [effort, setEffort] = useState<"low" | "medium" | "high">("medium");
   const patch = (p: Partial<AgentRow>) => { setA((x) => ({ ...x, ...p })); setDirty(true); };
   const save = async () => {
     await updateAgent(a.id, { instructions: a.instructions, framework: a.framework, model: a.model });
@@ -84,21 +86,17 @@ export function AgentBody({ agent, mode, onChange }: { agent: AgentRow; mode: Mo
         </TabsContent>
         <TabsContent value="code" className="space-y-3">
           <label className="flex items-center gap-2 text-sm"><span className="text-muted-foreground">Framework</span>
-            <select value={a.framework} onChange={(e) => patch({ framework: e.target.value })} className="rounded-lg border bg-background px-2 py-1 text-sm">
-              {FRAMEWORKS.map((f) => <option key={f.id} value={f.id}>{f.label} ({f.lang})</option>)}
-            </select>
+            <Pick label="Framework" value={a.framework} onChange={(v) => patch({ framework: v })} options={FRAMEWORKS.map((f) => ({ id: f.id as string, label: `${f.label} (${f.lang})` }))} className="w-auto min-w-48" />
           </label>
           <pre className="overflow-x-auto rounded-xl bg-[oklch(0.18_0.01_260)] p-4 font-mono text-[11.5px] leading-5 text-[oklch(0.9_0_0)]">{agentCode({ name: a.name, role: a.role, tools: a.tools }, a.framework).content}</pre>
           <p className="text-xs text-muted-foreground">Same HTTP contract whatever the framework — your app calls <code className="font-mono">/agents/{"{name}"}/run</code>. Switching frameworks regenerates this file only.</p>
         </TabsContent>
         <TabsContent value="model" className="space-y-4 text-sm">
           <label className="block space-y-1.5"><span className="font-medium">Model</span>
-            <select value={a.model} onChange={(e) => patch({ model: e.target.value })} className="w-full rounded-lg border bg-background px-2 py-1.5">
-              {["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"].map((m) => <option key={m}>{m}</option>)}
-            </select>
+            <ModelPick value={a.model} onChange={(v) => patch({ model: v })} />
           </label>
           <label className="block space-y-1.5"><span className="font-medium">Reasoning effort</span>
-            <select defaultValue="medium" className="w-full rounded-lg border bg-background px-2 py-1.5"><option>low</option><option>medium</option><option>high</option></select>
+            <Pick label="Reasoning effort" value={effort} onChange={setEffort} options={[{ id: "low", label: "Low" }, { id: "medium", label: "Medium" }, { id: "high", label: "High" }]} />
           </label>
           <label className="block space-y-1.5"><span className="font-medium">System prompt</span>
             <textarea value={a.instructions} onChange={(e) => patch({ instructions: e.target.value })} rows={6} className="w-full rounded-lg border bg-background p-2.5 font-mono text-xs" />

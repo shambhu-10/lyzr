@@ -19,12 +19,13 @@ import { Button } from "@/components/ui/button";
 import { askQuestions, deploy, editText, setStack, finishBuild, generateUI, quickChange, revertTo, revisePlan, saveFile, savePlan, setConnection, setStage, submitAnswers, type Msg } from "@/lib/actions/workspace";
 import { LookPicker } from "./look-picker";
 import { AgentPreview } from "./agent-preview";
+import { DataPanel } from "./data-panel";
 import { addComment, deleteComment, markComments, updateComment, type Comment } from "@/lib/actions/comments";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { buildSteps, testChecks } from "@/lib/script/build";
 import { filesFor } from "@/lib/script/files";
 import { toStack } from "@/lib/catalog";
-import { projectSpend } from "@/lib/usage";
+import { projectSpend, STARTING_CREDITS } from "@/lib/usage";
 import type { AgentRow, FileRow, VersionRow } from "@/lib/workspace-types";
 import type { Mode, Plan, Project, Stage } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -53,13 +54,14 @@ function notifyDone(name: string) {
   try { if (document.hidden && "Notification" in window && Notification.permission === "granted") new Notification(`${name} is built`, { body: "Your app passed its build. Come back to test and ship it." }); } catch {}
 }
 
-export function Workspace({ initial, defaultMode, otherSpend, workspaceConnections = [], role = "owner", ownerName = "" }: {
+export function Workspace({ initial, defaultMode, otherSpend, workspaceConnections = [], role = "owner", ownerName = "", bonus = 0 }: {
   initial: { project: Project; messages: Msg[]; files: FileRow[]; agents: AgentRow[]; versions: VersionRow[]; comments: Comment[] };
   defaultMode: Mode;
   otherSpend: number;
   workspaceConnections?: string[];
   role?: "owner" | "editor" | "viewer";
   ownerName?: string;
+  bonus?: number;
 }) {
   const viewer = role === "viewer";
   const [project, setProject] = useState(initial.project);
@@ -127,7 +129,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (source.template) { void onAnswer(TEMPLATE_ANSWERS); return; }
     setBusy("Reading your idea…");
-    askQuestions(project.id, mode === "developer").then((m) => { if (m) setMessages((x) => [...x, m]); }).finally(() => setBusy(null));
+    askQuestions(project.id, mode === "developer").then((r) => { if (r) { setMessages((x) => [...x, r.message]); patch({ kind: r.kind }); } }).finally(() => setBusy(null));
   }, [project.id, project.stage, plan, messages, source.template, onAnswer, mode]);
 
   const revise = async (instruction: string) => {
@@ -166,6 +168,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   };
 
   const onSend = async (text: string) => {
+    window.dispatchEvent(new Event("architect:sent")); // Focus music reacts to each message
     if (tab === "code" && mode === "developer" && reached >= ORDER.indexOf("test")) return askCode(text);
     if (!plan) return toast("Answer the questions above first, or pick the recommended options.");
     if (project.stage === "plan" || project.stage === "connect" || planFirst) return revise(text);
@@ -269,7 +272,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
 
   const codeChat = tab === "code" && mode === "developer" && reached >= ORDER.indexOf("test");
   const placeholder = codeChat ? `Ask about ${openFile || "this file"} or ask for a change…` : !plan ? "Or describe anything else you want…" : project.stage === "plan" ? "Ask for changes to the plan…" : planFirst ? "Describe a change — I'll update the plan first…" : "Ask for a change, e.g. “add a search box to the inbox”…";
-  const credits = Math.max(0, 20 - otherSpend - projectSpend(project));
+  const credits = Math.max(0, STARTING_CREDITS + bonus - otherSpend - projectSpend(project));
   const later = plan?.scope.filter((s) => s.status === "later").map((s) => s.item) ?? [];
 
   const stageCard = () => {
@@ -365,7 +368,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
               onSave={(p, c) => { setFiles((fs) => fs.map((f) => (f.path === p ? { ...f, content: c } : f))); return saveFile(project.id, p, c); }} />}
             {tab === "env" && <EnvPanel project={project} plan={plan} />}
             {tab === "logs" && <LogsPanel projectId={project.id} terminal={terminal} />}
-            {tab === "data" && <DataPanel plan={plan} demo={project.demo_data} mode={mode} />}
+            {tab === "data" && <DataPanel projectId={project.id} stack={stack} built={reached >= ORDER.indexOf("test")} />}
             {tab === "versions" && <VersionsPanel versions={versions} mode={mode} onRevert={async (v) => {
               const r = await revertTo(project.id, v.id);
               setFiles(r.files); if (r.plan) patch({ plan: r.plan as Plan });
@@ -449,23 +452,6 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
 function EmptyPreview({ stage }: { stage: Stage }) {
   const msg = stage === "plan" ? "Your app appears here once the plan is approved and built." : stage === "connect" ? "Connect your accounts, then start the build to watch your app come together here." : "Nothing to preview yet.";
   return <div className="grid h-full min-h-80 place-items-center p-10 text-center text-sm text-muted-foreground"><div className="max-w-xs"><Eye className="mx-auto mb-3 size-6" />{msg}</div></div>;
-}
-
-function DataPanel({ plan, demo, mode }: { plan: Plan | null; demo: boolean; mode: Mode }) {
-  if (!plan?.data.length)
-    return <div className="grid h-full min-h-80 place-items-center p-10 text-center text-sm text-muted-foreground"><div className="max-w-xs"><Database className="mx-auto mb-3 size-6" />This app doesn&apos;t store anything — every run is fresh and private. Ask Architect to “save history” to add a database.</div></div>;
-  return (
-    <div className="space-y-4 p-6">
-      {demo && <div className="rounded-lg bg-warning-soft p-3 text-xs">Showing sample rows. Real data appears once the app is live on connected accounts.</div>}
-      {plan.data.map((d) => (
-        <div key={d} className="overflow-hidden rounded-xl border bg-card">
-          <div className="flex items-center justify-between border-b px-4 py-2 text-sm font-medium">{d}<span className="text-xs font-normal text-muted-foreground">{mode === "developer" ? "RLS: owner only · 3 rows" : "Private to each user · 3 records"}</span></div>
-          <table className="w-full text-xs"><thead className="text-left text-muted-foreground"><tr><th className="px-4 py-2 font-normal">id</th><th className="font-normal">summary</th><th className="font-normal">created</th></tr></thead>
-            <tbody>{[1, 2, 3].map((i) => <tr key={i} className="border-t"><td className="px-4 py-2 font-mono">{i}</td><td>Sample {d.toLowerCase()} #{i}</td><td>{i}h ago</td></tr>)}</tbody></table>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 function VersionsPanel({ versions, mode, onRevert }: { versions: VersionRow[]; mode: Mode; onRevert: (v: VersionRow) => void }) {

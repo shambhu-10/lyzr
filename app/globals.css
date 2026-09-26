@@ -237,3 +237,11 @@
   .ph-two, .ph-machine { transition: none; }
   .ph-machine .ph-wing-far, .ph-machine .ph-wing-near { animation: none !important; }
 }
+
+/* Focus music nudge on each chat message (components/workspace/focus-mode.tsx) */
+@keyframes fm-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--brand) 55%, transparent) } 100% { box-shadow: 0 0 0 10px transparent } }
+@keyframes fm-bounce { 0%, 100% { transform: none } 30% { transform: translateY(-2px) scale(1.04) } 60% { transform: translateY(1px) } }
+.fm-pulse { animation: fm-pulse 1.1s ease-out 2; }
+.fm-bounce { animation: fm-bounce .6s ease-out; }
+.fm-bounce .animate-pulse { animation-duration: .35s; }
+@media (prefers-reduced-motion: reduce) { .fm-pulse, .fm-bounce { animation: none; } }

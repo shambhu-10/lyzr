@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useTypedPlaceholder } from "@/hooks/use-typed-placeholder";
 import { useRouter } from "next/navigation";
 import { ArrowUp, Sparkles } from "lucide-react";
 import { savePendingPrompt } from "@/lib/pending-prompt";
@@ -13,31 +14,10 @@ const EXAMPLES = [
 ];
 const STATIC = "Describe the app or agent you want to build…";
 
-/** Placeholder that types out example ideas, then erases them — only while the box is empty and unfocused. */
-function useTypedPlaceholder(active: boolean) {
-  const [text, setText] = useState(STATIC);
-  useEffect(() => {
-    if (!active || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    let i = 0, n = 0, deleting = false, t: ReturnType<typeof setTimeout>;
-    const tick = () => {
-      const full = EXAMPLES[i];
-      n += deleting ? -1 : 1;
-      setText(full.slice(0, n) + (n < full.length || deleting ? "|" : ""));
-      let wait = deleting ? 18 : 38 + Math.random() * 40; // human-ish typing rhythm
-      if (!deleting && n >= full.length) { deleting = true; wait = 1800; }
-      else if (deleting && n <= 0) { deleting = false; i = (i + 1) % EXAMPLES.length; wait = 350; }
-      t = setTimeout(tick, wait);
-    };
-    t = setTimeout(tick, 600);
-    return () => { clearTimeout(t); setText(STATIC); };
-  }, [active]);
-  return text;
-}
-
 export function HeroPrompt() {
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
-  const placeholder = useTypedPlaceholder(!value && !focused);
+  const placeholder = useTypedPlaceholder(EXAMPLES, !value && !focused, STATIC);
   const router = useRouter();
   const go = () => {
     if (value.trim()) savePendingPrompt(value.trim());

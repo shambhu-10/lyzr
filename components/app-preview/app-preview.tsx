@@ -4,6 +4,7 @@ import { Bot, CalendarCheck, Check, Copy, Loader2, Sparkles, Upload } from "luci
 import { toast } from "sonner";
 import type { Block, Plan } from "@/lib/types";
 import { runBlockAgent } from "@/lib/actions/agents";
+import { saveAppRow } from "@/lib/actions/app-data";
 import { calendarEvents, type CalendarItem } from "@/lib/actions/calendar";
 import { RichText } from "@/components/rich-text";
 import { CommentThread } from "./comment-thread";
@@ -179,6 +180,16 @@ function Commentable({ on, thread, onSave, onEdit, onDelete, children }: {
 
 const card = "rise rounded-xl border border-black/5 bg-white";
 
+/** A form's button stores a real row (Data tab); on the live URL it saves through live_insert_row(). */
+async function saveForm(b: Block, ctx: Ctx) {
+  if (!ctx.projectId && !ctx.slug) return toast("Saving works once the app is built.");
+  const values = Object.fromEntries(b.fields.map((f) => [f.label, ctx.form[f.label] ?? ""]));
+  const r = await saveAppRow({ projectId: ctx.projectId, slug: ctx.slug, form: b.title, values }).catch(() => ({ error: "Couldn't save." }));
+  if ("error" in r) return toast.error(r.error);
+  b.fields.forEach((f) => ctx.setField(f.label, ""));
+  toast.success(`Saved to ${r.table}`);
+}
+
 function BlockView({ block: b, k, ctx }: { block: Block; k: number; ctx: Ctx }) {
   const t = (field: "title" | "body" | "action", cls?: string) => <T v={b[field]} path={`b.${k}.${field}`} ctx={ctx} className={cls} />;
   const it = (j: number, field: "title" | "meta" | "badge") => <T v={b.items[j][field]} path={`b.${k}.items.${j}.${field}`} ctx={ctx} />;
@@ -240,7 +251,7 @@ function BlockView({ block: b, k, ctx }: { block: Block; k: number; ctx: Ctx }) 
                 : <input placeholder={f.placeholder} value={ctx.form[f.label] ?? ""} onChange={(e) => ctx.setField(f.label, e.target.value)} className="h-9 w-full rounded-lg border border-black/10 px-2 outline-none focus:border-(--a)" />}
             </label>
           ))}
-          {b.action && <Row onClick={() => toast.success("Saved")} className="inline-block rounded-lg bg-(--a) px-3 py-1.5 text-sm font-medium text-white">{t("action", "outline-white/70 focus:bg-transparent")}</Row>}
+          {b.action && <Row onClick={() => void saveForm(b, ctx)} className="inline-block rounded-lg bg-(--a) px-3 py-1.5 text-sm font-medium text-white">{t("action", "outline-white/70 focus:bg-transparent")}</Row>}
         </div>
       );
     case "text":

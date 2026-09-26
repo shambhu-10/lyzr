@@ -4,6 +4,7 @@ import { Copy, Database, FileCode2, Folder, KeyRound, Layers, Lock, Plus, Refres
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Editable } from "./editable";
+import { ModelPick, Pick } from "@/components/pick";
 import { suggestTech } from "@/lib/actions/workspace";
 import { FRAMEWORKS, MODELS, STACK, type Stack } from "@/lib/catalog";
 import { ACCESS, COLUMN_TYPES, schemaSql, type Table, type TechSpec as Spec } from "@/lib/tech-spec";
@@ -148,11 +149,9 @@ function Head({ icon, title, hint, action }: { icon: React.ReactNode; title: str
 
 function Choice<T extends string>({ label, value, options, onChange, disabled }: { label: string; value: T; options: readonly { id: T; label: string }[]; onChange: (v: T) => void; disabled?: boolean }) {
   return (
-    <label className="flex flex-col gap-1 rounded-xl border bg-card p-2.5 text-xs">
+    <div className="flex flex-col gap-1.5 rounded-xl border bg-card p-2.5 text-xs">
       <span className="text-muted-foreground">{label}</span>
-      <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as T)} className="bg-transparent text-sm font-medium outline-none disabled:opacity-80">
-        {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-      </select>
-    </label>
+      {label === "Model" ? <ModelPick value={value} onChange={(v) => onChange(v as T)} disabled={disabled} /> : <Pick label={label} value={value} options={options} onChange={onChange} disabled={disabled} />}
+    </div>
   );
 }

@@ -37,3 +37,12 @@ export function themeStyle(t: AppTheme = DEFAULT_THEME): CSSProperties {
     "--app-font": FONTS[t.font] ?? FONTS.serif,
   } as CSSProperties;
 }
+
+/** Ready-made looks: offered in the Home "+" menu before a plan exists, and as the offline fallback for AI looks. */
+export const THEME_PRESETS: AppTheme[] = [
+  { name: "Calm Paper", why: "Warm and readable — great for everyday tools.", accent: "teal", radius: "soft", font: "serif", sidebar: "light" },
+  { name: "Crisp Ops", why: "Dense and focused — for teams who live in it all day.", accent: "indigo", radius: "sharp", font: "sans", sidebar: "dark" },
+  { name: "Friendly Studio", why: "Bright and approachable — for customers and newcomers.", accent: "coral", radius: "round", font: "sans", sidebar: "tint" },
+  { name: "Quiet Slate", why: "Neutral and serious — for finance, legal and internal tools.", accent: "slate", radius: "soft", font: "sans", sidebar: "light" },
+  { name: "Night Violet", why: "Bold and modern — for developer and AI products.", accent: "violet", radius: "round", font: "mono", sidebar: "dark" },
+];

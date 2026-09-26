@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { renameProject } from "@/lib/actions/projects";
 import { ShareDialog } from "./share-dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { LensTip } from "@/components/lens-info";
 import { STAGES, type Mode, type Project, type Stage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -61,12 +63,13 @@ export function WorkspaceHeader({ project, mode, onMode, view, onView, credits, 
       </nav>
 
       <div className="ml-auto flex items-center gap-2 md:ml-0">
-        <label className={cn("flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs", mode === "developer" ? "border-dev/30 bg-dev-soft text-dev" : "border-brand/30 bg-brand-soft text-brand")}
-          title="Switch between Builder and Developer views — same project, nothing is lost">
+        <Tooltip><TooltipTrigger asChild>
+        <label className={cn("flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs", mode === "developer" ? "border-dev/30 bg-dev-soft text-dev" : "border-brand/30 bg-brand-soft text-brand")}>
           {mode === "developer" ? <Code2 className="size-3.5" /> : <Wand2 className="size-3.5" />}
           <span className="hidden font-medium sm:inline">{mode === "developer" ? "Developer" : "Builder"}</span>
           <Switch checked={mode === "developer"} onCheckedChange={(v) => onMode(v ? "developer" : "builder")} aria-label="Developer view" className="scale-75" />
         </label>
+        </TooltipTrigger><TooltipContent side="bottom"><LensTip mode={mode === "developer" ? "builder" : "developer"} /></TooltipContent></Tooltip>
         <span className="hidden text-xs text-muted-foreground tabular-nums lg:inline">${credits.toFixed(2)}</span>
         <Button size="icon-sm" variant="ghost" onClick={() => setGh(true)} aria-label="GitHub" className="hidden sm:inline-flex"><GithubIcon /></Button>
         <Button size="sm" variant="outline" onClick={() => setShare(true)}><Share2 /> <span className="hidden sm:inline">Share</span></Button>
