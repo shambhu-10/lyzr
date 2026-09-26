@@ -1,8 +1,8 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Braces, Database, Layers, Loader2, RefreshCw, Rows3, Search, Sparkles } from "lucide-react";
+import { Braces, Database, Layers, Loader2, RefreshCw, Rows3, Search, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { listAppData, seedExampleRows, type AppRow } from "@/lib/actions/app-data";
+import { deleteAppRow, listAppData, seedExampleRows, type AppRow } from "@/lib/actions/app-data";
 import { STACK, type Stack } from "@/lib/catalog";
 import { schemaSql, type Column } from "@/lib/tech-spec";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,7 @@ export function DataPanel({ projectId, stack, built }: { projectId: string; stac
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [confirmId, setConfirmId] = useState<string | null>(null); // two-step delete: first click arms, second deletes
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -35,6 +36,13 @@ export function DataPanel({ projectId, stack, built }: { projectId: string; stac
     const r = await seedExampleRows(projectId).catch(() => ({ error: "Couldn't add example rows." }));
     setSeeding(false);
     if ("error" in r) toast.error(r.error); else { toast.success(`Added ${r.added} example rows`); void load(); }
+  };
+  const remove = async (row: AppRow) => {
+    if (confirmId !== row.id) { setConfirmId(row.id); return; }
+    setConfirmId(null);
+    setTables((ts) => ts?.map((t) => ({ ...t, rows: t.rows.filter((r) => r.id !== row.id) })) ?? null); // optimistic
+    const r = await deleteAppRow(projectId, row.id).catch(() => ({ error: "Couldn't delete that row." }));
+    if ("error" in r) { toast.error(r.error); void load(); } else toast.success("Row deleted");
   };
   const table = tables?.find((t) => t.name === active) ?? null;
   const cols = useMemo(() => {
@@ -62,7 +70,7 @@ export function DataPanel({ projectId, stack, built }: { projectId: string; stac
           <div className="min-w-0"><div className="truncate font-mono text-sm font-semibold">app_{projectId.replace(/-/g, "").slice(0, 12)}</div><div className="text-xs text-muted-foreground">{engine}</div></div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="hidden rounded-full border px-2.5 py-1 text-[11px] text-muted-foreground sm:inline">Read-only — editing coming soon</span>
+          <span className="hidden rounded-full border px-2.5 py-1 text-[11px] text-muted-foreground sm:inline">Delete rows · editing coming soon</span>
           <button onClick={() => void load()} aria-label="Refresh data" className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"><RefreshCw className={cn("size-3.5", loading && "animate-spin")} /></button>
         </div>
       </div>
@@ -93,15 +101,21 @@ export function DataPanel({ projectId, stack, built }: { projectId: string; stac
               <div className="min-h-0 flex-1 overflow-auto">
                 <table className="w-full min-w-max text-xs">
                   <thead className="sticky top-0 bg-card text-left text-muted-foreground"><tr>
-                    {["id", ...cols, "created_at", "source"].map((c) => <th key={c} className="border-b px-3 py-2 font-mono font-normal">{c}</th>)}
+                    {["id", ...cols, "created_at", "source"].map((c) => <th key={c} className="border-b px-3 py-2 font-mono font-normal">{c}</th>)}<th className="w-10 border-b" aria-label="Actions" />
                   </tr></thead>
                   <tbody>
                     {rows.map((r) => (
-                      <tr key={r.id} className="border-b border-border/60 hover:bg-muted/40">
+                      <tr key={r.id} className="group/row border-b border-border/60 hover:bg-muted/40">
                         <td className="px-3 py-2 font-mono text-muted-foreground">{r.id.slice(0, 8)}</td>
                         {cols.map((c) => { const v = r.data[c]; const s = v === undefined || v === null ? "null" : String(v); return <td key={c} title={s} className={cn("max-w-64 truncate px-3 py-2 font-mono", s === "null" && "text-muted-foreground")}>{s}</td>; })}
                         <td className="px-3 py-2 font-mono whitespace-nowrap text-muted-foreground" suppressHydrationWarning>{new Date(r.created_at).toLocaleString()}</td>
                         <td className="px-3 py-2"><span className={cn("rounded-full px-2 py-0.5 text-[10px]", r.source === "live" ? "bg-brand/15 text-brand" : "bg-muted text-muted-foreground")}>{SOURCE[r.source]}</span></td>
+                        <td className="px-2 py-1 text-right">
+                          <button onClick={() => void remove(r)} onBlur={() => confirmId === r.id && setConfirmId(null)} aria-label={confirmId === r.id ? "Click again to delete this row" : "Delete row"}
+                            className={cn("inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition", confirmId === r.id ? "bg-destructive/15 text-destructive" : "text-muted-foreground opacity-0 group-hover/row:opacity-100 hover:bg-muted hover:text-destructive focus-visible:opacity-100")}>
+                            <Trash2 className="size-3.5" />{confirmId === r.id && "Delete?"}
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

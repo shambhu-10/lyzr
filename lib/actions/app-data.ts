@@ -62,3 +62,11 @@ export async function seedExampleRows(projectId: string) {
   const { error: insErr } = await supabase.from("app_rows").insert(seed.rows.map((r) => ({ project_id: projectId, table_name: r.table, data: r.data, source: "seed" })));
   return insErr ? { error: "Couldn't save the example rows." } : { added: seed.rows.length };
 }
+
+/** Remove one row from the app's data (editors and the owner only — enforced by RLS on app_rows). */
+export async function deleteAppRow(projectId: string, rowId: string) {
+  const { supabase } = await requireUser();
+  const { error, count } = await supabase.from("app_rows").delete({ count: "exact" }).eq("project_id", projectId).eq("id", rowId);
+  if (error || !count) return { error: "Couldn't delete that row — you may only have view access." };
+  return { ok: true };
+}
