@@ -1,4 +1,4 @@
-import type { Plan } from "@/lib/types";
+import type { Check, Plan } from "@/lib/types";
 import { DEFAULT_STACK, frameworkLabel, type Stack } from "@/lib/catalog";
 import { schemaPath, screenPath, slug, techFor } from "./files";
 
@@ -53,7 +53,7 @@ export function buildSteps(plan: Plan, framework = "lyzr", stack: Stack = DEFAUL
   return steps;
 }
 
-export type Check = { label: string; dev: string; ok: boolean | "warn"; fix?: string };
+export type { Check };
 
 export function testChecks(plan: Plan, demo: boolean): Check[] {
   return [

@@ -9,6 +9,11 @@ import type { VersionRow } from "@/lib/workspace-types";
 import type { Comment } from "@/lib/actions/comments";
 import { balance, spentOn } from "@/lib/usage";
 import { mySpend } from "@/lib/usage-log";
+import { sandboxesEnabled } from "@/lib/sandbox";
+import type { RunLite } from "@/lib/workspace-types";
+
+// Server actions on this page include real build steps (a model call + commands in a sandbox).
+export const maxDuration = 300;
 
 export default async function ProjectPage({ params }: PageProps<"/p/[id]">) {
   const { id } = await params;
@@ -22,6 +27,7 @@ export default async function ProjectPage({ params }: PageProps<"/p/[id]">) {
   ]);
   const { data: comments } = await supabase.from("comments").select("*").eq("project_id", id).order("created_at");
   const spend = await mySpend(supabase);
+  const { data: activeRun } = await supabase.from("build_runs").select("id, status, step, events, usage").eq("project_id", id).eq("status", "running").maybeSingle(); // null if migration 0006 isn't applied
   if (!project) notFound();
   // Owner, or a teammate via an invite (RLS already limits what they can read and write).
   const { data: member } = project.owner_id === user.id ? { data: null } : await supabase.from("project_members").select("role").eq("project_id", id).eq("user_id", user.id).maybeSingle();
@@ -36,6 +42,8 @@ export default async function ProjectPage({ params }: PageProps<"/p/[id]">) {
       workspaceConnections={Object.keys(profile?.connections ?? {})}
       credits={{ left: balance(spentOn(spend), profile?.bonus_credits), project: spentOn(spend, id) }}
       role={role}
+      realBuilds={sandboxesEnabled()}
+      activeRun={activeRun as RunLite | null}
       ownerName={(profile?.full_name ?? "").split(" ")[0]}
     />
     </>
