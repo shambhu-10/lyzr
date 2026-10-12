@@ -22,6 +22,7 @@ create table public.build_runs (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects on delete cascade,
   status text not null default 'running' check (status in ('running', 'done', 'failed')),
+  request text,                                 -- a change request; null for the first build
   sandbox text,                                 -- Vercel Sandbox name
   preview_url text,
   step int not null default 0,

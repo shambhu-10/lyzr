@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { wakePreview } from "@/lib/actions/build";
 
 /** The real app, running in its sandbox. Waking a paused sandbox takes a second or two. */
-export function SandboxPreview({ projectId, onDesignView }: { projectId: string; onDesignView: () => void }) {
+export function SandboxPreview({ projectId, working, onDesignView }: { projectId: string; working?: string | null; onDesignView: () => void }) {
   const [state, setState] = useState<{ url?: string; error?: string } | null>(null);
   const [nonce, setNonce] = useState(0);
   const load = useCallback(() => wakePreview(projectId).then((r) => setState("error" in r ? { error: r.error } : { url: r.url })).catch(() => setState({ error: "Couldn't reach the sandbox." })), [projectId]);
@@ -16,7 +16,7 @@ export function SandboxPreview({ projectId, onDesignView }: { projectId: string;
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b bg-background px-3 py-1.5 text-xs text-muted-foreground">
         <Server className="size-3.5 text-success" />
-        <span className="min-w-0 flex-1 truncate">Running in a Vercel Sandbox (microVM){state?.url ? ` · ${state.url.replace(/^https:\/\//, "")}` : ""}</span>
+        <span className="min-w-0 flex-1 truncate">{working ? <span className="flex items-center gap-1.5 text-foreground"><Loader2 className="size-3 animate-spin" /> {working}…</span> : <>Running in a Vercel Sandbox (microVM){state?.url ? ` · ${state.url.replace(/^https:\/\//, "")}` : ""}</>}</span>
         <Button size="xs" variant="ghost" onClick={onDesignView}>Design view</Button>
         <Button size="icon-xs" variant="ghost" aria-label="Reload the app" onClick={() => setNonce((n) => n + 1)} disabled={!state?.url}><RotateCw /></Button>
         {state?.url && <Button size="icon-xs" variant="ghost" asChild aria-label="Open the running app"><a href={state.url} target="_blank" rel="noreferrer"><ExternalLink /></a></Button>}

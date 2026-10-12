@@ -10,4 +10,4 @@ export type BuildEvent =
   | { t: "note"; text: string }
   | { t: "error"; text: string }
   | { t: "done"; summary: string; url: string };
-export type RunLite = { id: string; status: "running" | "done" | "failed"; step: number; events: BuildEvent[]; usage: { tokens?: number; cost?: number; model?: string } };
+export type RunLite = { id: string; status: "running" | "done" | "failed"; request?: string | null; step: number; events: BuildEvent[]; usage: { tokens?: number; cost?: number; model?: string } };

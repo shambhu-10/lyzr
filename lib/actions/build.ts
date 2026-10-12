@@ -12,11 +12,12 @@ import type { Check, Project } from "@/lib/types";
  * The job lives in build_runs; each buildStep() is one model call + its tool calls, short enough for a serverless
  * function. The browser calls it in a loop (and resumes after a reload) — in production a queue worker would.
  */
-export type RunRow = { id: string; project_id: string; status: "running" | "done" | "failed"; sandbox: string; step: number; history: ChatMessage[]; events: BuildEvent[]; usage: { tokens?: number; cost?: number; model?: string }; preview_url: string | null; created_at: string };
+export type RunRow = { id: string; project_id: string; status: "running" | "done" | "failed"; request: string | null; sandbox: string; step: number; history: ChatMessage[]; events: BuildEvent[]; usage: { tokens?: number; cost?: number; model?: string }; preview_url: string | null; created_at: string };
 
 const touch = () => new Date().toISOString();
 
-export async function startRealBuild(projectId: string) {
+/** The first build (fresh sandbox), or — with `request` — a change made by the same agent in the app's existing sandbox. */
+export async function startRealBuild(projectId: string, request?: string) {
   if (!sandboxesEnabled()) return { error: "Sandboxes aren't configured on this deployment." };
   const { supabase, profile } = await requireUser();
   const { data: project } = await supabase.from("projects").select("*").eq("id", projectId).single<Project>();
@@ -25,6 +26,7 @@ export async function startRealBuild(projectId: string) {
   if (broke) return { error: broke };
   const { data: running } = await supabase.from("build_runs").select("*").eq("project_id", projectId).eq("status", "running").maybeSingle<RunRow>();
   if (running) return { run: running }; // resume after a reload
+  if (request) return startChange(supabase, project, request.slice(0, 2000));
 
   const sb = await createSandbox();
   await writeFiles(sb, scaffold(project.plan));
@@ -37,13 +39,27 @@ export async function startRealBuild(projectId: string) {
   return { run: data };
 }
 
+async function startChange(supabase: Awaited<ReturnType<typeof requireUser>>["supabase"], project: Project, request: string) {
+  const name = project.source?.preview?.sandbox;
+  if (!name) return { error: "This app wasn't built in a sandbox." };
+  const sb = await getSandbox(name);
+  await sb.extendTimeout(20 * 60 * 1000).catch(() => {}); // resumes a paused sandbox, files and node_modules intact
+  const history: ChatMessage[] = [{ role: "user", content: `Change request from the user: "${request}". The app already exists. Read only the files you need, make the change, run_build, then finish with one sentence describing what changed.` }];
+  const events: BuildEvent[] = [{ t: "note", text: "Applying your change in the same sandbox" }];
+  const { data, error } = await supabase.from("build_runs").insert({ project_id: project.id, sandbox: name, request, history, events }).select().single<RunRow>();
+  if (error) return { error: "Couldn't start the change." };
+  const { data: message } = await supabase.from("messages").insert({ project_id: project.id, role: "user", kind: "text", content: request }).select().single();
+  return { run: data, message };
+}
+
 /** Code changed since the last passing build? (derived from the events, so nothing extra is stored) */
 const dirtyAfter = (events: BuildEvent[]) => {
   const lastPass = events.findLastIndex((e) => e.t === "build" && e.ok);
   return lastPass < 0 || events.slice(lastPass).some((e) => e.t === "file");
 };
 
-type StepResult = { events: BuildEvent[]; step: number; status: RunRow["status"]; usage: RunRow["usage"]; result?: Awaited<ReturnType<typeof completeBuild>> & { preview: string } };
+type Finished = { files: { path: string; content: string }[]; agents: unknown[] | null; message: unknown; source: unknown; version?: { id: string; label: string; created_at: string } | null };
+type StepResult = { events: BuildEvent[]; step: number; status: RunRow["status"]; usage: RunRow["usage"]; result?: Finished & { preview: string } };
 
 export async function buildStep(runId: string): Promise<StepResult | { error: string }> {
   const { supabase } = await requireUser();
@@ -92,10 +108,22 @@ async function finish(supabase: Awaited<ReturnType<typeof requireUser>>["supabas
   const seconds = (Date.now() - new Date(r.created_at).getTime()) / 1000;
   // ponytail: bills provisioned memory for the build only (2 vCPU × 2 GB at $0.0212/GB-h); active CPU is reported when the sandbox stops.
   await logUsage(supabase, r.project_id, "sandbox", [{ model: "vercel-sandbox", input_tokens: 0, output_tokens: 0, ms: Math.round(seconds * 1000), cost_usd: 4 * (seconds / 3600) * 0.0212 }]);
-  const done = await completeBuild(supabase, r.project, files, seconds, { summary, checks, preview: { sandbox: r.sandbox, url: preview.url } });
+  const done = r.request ? await saveChange(supabase, r.project, files, summary, preview.url) : await completeBuild(supabase, r.project, files, seconds, { summary, checks, preview: { sandbox: r.sandbox, url: preview.url } });
   events.push({ t: "done", summary, url: preview.url });
   await supabase.from("build_runs").update({ step: r.step, history: r.history, events: [...r.events, events.at(-1)], usage: r.usage, status: "done", preview_url: preview.url, updated_at: touch() }).eq("id", r.id);
   return { events, step: r.step, status: "done" as const, usage: r.usage, result: { ...done, preview: preview.url } };
+}
+
+/** A finished change: the sandbox's files replace the saved code, as a version with the agent's summary. */
+async function saveChange(supabase: Awaited<ReturnType<typeof requireUser>>["supabase"], project: Project, files: { path: string; content: string }[], summary: string, url: string) {
+  const touchedAt = touch();
+  await supabase.from("files").delete().eq("project_id", project.id);
+  await supabase.from("files").insert(files.map((f) => ({ project_id: project.id, path: f.path, content: f.content, updated_at: touchedAt })));
+  const { data: version } = await supabase.from("versions").insert({ project_id: project.id, label: summary.slice(0, 80), snapshot: { files, plan: project.plan, summary } }).select("id, label, created_at").single();
+  const { data: message } = await supabase.from("messages").insert({ project_id: project.id, role: "assistant", kind: "text", content: `${summary} The build passes and the running app is updated.` }).select().single();
+  const source = { ...(project.source ?? {}), preview: { ...project.source!.preview!, url } };
+  await supabase.from("projects").update({ source, updated_at: touchedAt }).eq("id", project.id);
+  return { files, agents: null, message, source, version };
 }
 
 export async function cancelBuild(runId: string) {

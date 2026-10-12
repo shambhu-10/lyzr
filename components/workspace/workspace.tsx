@@ -148,6 +148,14 @@ export function Workspace({ initial, defaultMode, credits: initialCredits, works
   /** Real change request after the app is built: AI edits the screens, code and a version with a summary follow. */
   const change = async (text: string) => {
     setBusy("Changing your app…"); setTab("preview");
+    // Built in a sandbox → the same build agent edits the real code there; otherwise the quick path edits the design.
+    if (realBuilds && source.preview && !plan?.trigger) {
+      const r = await startRealBuild(project.id, text).catch(() => ({ error: "Couldn't reach the sandbox." }));
+      if ("error" in r) { toast.error(r.error); setBusy(null); return false; }
+      if ("message" in r && r.message) push([r.message as Msg]);
+      setRun(r.run as RunLite); setPreviewMode("app"); setBusy("Changing your app in its sandbox…");
+      return true;
+    }
     try {
       const r = await quickChange(project.id, text);
       push(r.messages);
@@ -198,6 +206,7 @@ export function Workspace({ initial, defaultMode, credits: initialCredits, works
   const [run, setRun] = useState<RunLite | null>(activeRun); // a real sandbox build (null = scripted build)
   const [previewMode, setPreviewMode] = useState<"app" | "design">("app");
   const [retry, setRetry] = useState(0);
+  const [previewKey, setPreviewKey] = useState(0); // bump to reload the running app
   const stepping = useRef(false);
 
   useEffect(() => {
@@ -238,8 +247,15 @@ export function Workspace({ initial, defaultMode, credits: initialCredits, works
         if ("error" in r) { toast.error(r.error); setRun((x) => x && { ...x, status: "failed" }); return; }
         setTerminal((t) => [...t, ...r.events.map(eventLine)]);
         setRun((x) => x && { ...x, step: r.step, status: r.status, usage: r.usage, events: [...x.events, ...r.events] });
-        if (r.status === "failed") toast.error("The build agent couldn't get a passing build. Use the quick build, or try again.");
-        if (r.result) {
+        if (r.status === "failed") { setBusy(null); toast.error(run.request ? "The agent couldn't make that change pass the build — your app is unchanged." : "The build agent couldn't get a passing build. Use the quick build, or try again."); }
+        if (r.result && run.request) { // a change finished
+          const res = r.result;
+          setFiles(res.files); if (res.message) push([res.message as Msg]);
+          const ver = res.version;
+          if (ver) setVersions((v) => [{ ...ver, summary: ver.label } as VersionRow, ...v]);
+          patch({ source: res.source as Project["source"] }); setPreviewKey((k) => k + 1); setBusy(null);
+          toast.success("Change applied — the build passes");
+        } else if (r.result) {
           const res = r.result;
           setFiles(res.files); setAgents(res.agents as AgentRow[]); if (res.message) push([res.message as Msg]);
           setVersions((v) => [{ id: crypto.randomUUID(), label: "First build", created_at: new Date().toISOString(), summary: "Built and verified in a sandbox." }, ...v]);
@@ -401,7 +417,7 @@ export function Workspace({ initial, defaultMode, credits: initialCredits, works
                 if ("error" in r) { toast.error(r.error); patch({ plan }); return false; }
                 patch({ plan: r.plan, name: r.plan.name }); return true;
               }} />}
-            {tab === "preview" && source.preview && previewMode === "app" && !building && !plan?.trigger ? <SandboxPreview projectId={project.id} onDesignView={() => setPreviewMode("design")} />
+            {tab === "preview" && source.preview && previewMode === "app" && !building && !plan?.trigger ? <SandboxPreview key={previewKey} projectId={project.id} working={run?.status === "running" && run.request ? `Applying your change · step ${run.step}` : null} onDesignView={() => setPreviewMode("design")} />
             : tab === "preview" && plan?.trigger ? <AgentPreview plan={plan} agents={agents} slug={project.slug} live={project.stage === "live"} /> : tab === "preview" && (plan && (revealed || building) ? (
               <div className="h-full p-4">
                 {commenting && <p className="mb-2 text-center text-xs text-muted-foreground">Click any part of the app to leave a comment. Send them to Architect when you&apos;re done.</p>}

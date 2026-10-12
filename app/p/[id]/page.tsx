@@ -27,7 +27,7 @@ export default async function ProjectPage({ params }: PageProps<"/p/[id]">) {
   ]);
   const { data: comments } = await supabase.from("comments").select("*").eq("project_id", id).order("created_at");
   const spend = await mySpend(supabase);
-  const { data: activeRun } = await supabase.from("build_runs").select("id, status, step, events, usage").eq("project_id", id).eq("status", "running").maybeSingle(); // null if migration 0006 isn't applied
+  const { data: activeRun } = await supabase.from("build_runs").select("id, status, request, step, events, usage").eq("project_id", id).eq("status", "running").maybeSingle(); // null if migration 0006 isn't applied
   if (!project) notFound();
   // Owner, or a teammate via an invite (RLS already limits what they can read and write).
   const { data: member } = project.owner_id === user.id ? { data: null } : await supabase.from("project_members").select("role").eq("project_id", id).eq("user_id", user.id).maybeSingle();
