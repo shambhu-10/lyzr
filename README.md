@@ -70,53 +70,61 @@ Home · Projects · Agents · Connections · Explore | Usage & billing · Settin
 
 | Real | Simulated (clearly labelled in the UI) |
 |---|---|
-| Sign-in with Google, GitHub and email magic link (Supabase) | Build pipeline steps and terminal output (screens themselves are real) |
-| Postgres with row-level security on every table | Permission screens for third-party tools other than Google Calendar |
-| AI clarifying questions and structured plan (Groq · `openai/gpt-oss-120b`, strict JSON-schema outputs validated with zod) | Test results, deploy progress |
-| Agent playground chat (Groq, uses the model chosen on the agent) | Agent traces |
-| Projects, stage, chat history and Builder/Developer preference are saved | GitHub push / PR, custom domains |
-| **Editable generated code**, saved to the database, with versions and restore | |
-| AI-generated screens during Build, and real change requests with summaries and diffs | |
-| Agent buttons inside the generated app, including on the live URL | |
-| Google Calendar (read-only OAuth, real events) | |
-| Preview comments, agent evals with an AI judge, metered AI usage and logs | |
-| Code download as a zip | |
-| Editor AI: autocomplete, ⌘K edits with diff review, code-aware chat | |
-| Voice input (Groq Whisper) | |
-| Plan editing, including reading `AGENTS.md` back into the plan | |
-| Your real GitHub repo list on Import | |
-| Public live URL (`/live/[slug]`) that renders the shipped app, with real view counts | |
-| Encrypted secrets vault (AES-256-GCM, only the last 4 characters are ever shown) | |
-| **Pick a look**: 3 AI-proposed themes rendered as live previews, switchable after launch | |
-| **Edit text in place** in the preview, saved as a version (no AI cost) | |
-| **Security check before Ship**: scans the code for hardcoded keys, missing env vars, unconnected accounts and agents that act without approval, with one-click fixes (e.g. move a key to the vault and rewrite the line) | |
-| **Community gallery** (opt-in per app) on the landing page and Explore, with **Remix** and real remix counts | |
-| **Team sharing**: invite links with Editor/Viewer roles, enforced by row-level security | |
+| **Real builds in a sandbox**: an AI agent writes a React + Vite app inside a Vercel Sandbox (Firecracker microVM), runs `vite build`, fixes errors, and only finishes when the build passes. The preview is the running app | The quick build (agent projects, or when sandboxes aren't configured): timeline + template code |
+| **Model gateway**: one `generate()` for Groq, Claude (official SDK), OpenAI and Gemini, with tool calls, JSON schemas, cost per call, rate-limit waits and same-tier fallback. A provider is enabled by adding its key | Permission screens for third-party tools other than Google Calendar |
+| **Metered credits**: balance = $20 + bonus − real spend from an append-only usage ledger; the server refuses AI work at $0 | Deploy progress animation (the live URL renders the app from its plan) |
+| **GitHub push**: first push creates a private repo, every push is one commit (never forced); a branch opens a pull request | Agent traces, custom domains, Top up checkout, Settings team/billing tabs |
+| Sign-in with Google, GitHub and email magic link (Supabase); Postgres with row-level security on every table | Import's repo "analysis" (it lists your real repos) |
+| AI clarifying questions and structured plan (strict JSON-schema outputs validated with zod) | |
+| Agent playground chat and evals with an AI judge | |
+| AI screen layouts, change requests with summaries and diffs, edit-text and look changes as versions | |
+| Editor AI: autocomplete, ⌘K edits with diff review, code-aware chat; code download as a zip | |
+| Google Calendar (read-only OAuth, real events); voice input (Whisper) | |
+| Encrypted secrets vault (AES-256-GCM); security check before Ship, enforced on the server | |
+| Public live URL with real views, community gallery with Remix, team sharing with roles | |
 
-Without a `GROQ_API_KEY`, the AI steps switch to scripted answers, so a demo never gets stuck.
+Without an AI key, the AI steps switch to scripted answers; without sandboxes, Build uses the quick build. A demo never gets stuck.
 
-## Tech
-Next.js 16 (App Router) · TypeScript · Tailwind v4 + shadcn/ui · Supabase (`@supabase/ssr`) · Groq SDK · React Flow · Monaco · Vercel.
+## How it works
 
 ```
-app/            routes: landing, login, onboarding, (app)/*, p/[id] workspace, live/[slug]
-components/     workspace/ (stepper, chat, stage cards, code), agents/, app-preview/, shell/
-lib/ai/         planner (questions + plan), agent chat, estimate
-lib/actions/    server actions (projects, workspace, agents, import, connections)
-lib/script/     simulated build timeline + per-framework code generation
-supabase/       migrations/0001_init.sql (schema + RLS)
+Browser ──REST/server actions──▶ Next.js on Vercel ──▶ Supabase (Postgres + RLS: projects, versions, usage ledger, build_runs)
+   │                                   │
+   │ iframe (running app)              ├─▶ Model gateway (lib/ai/gateway.ts) ─▶ Groq · Claude · OpenAI · Gemini
+   └──────────────▶ Vercel Sandbox ◀───┘   build agent (lib/ai/builder.ts): write_file · read_file · list_files · run_build · finish
+                    microVM: Vite + React, dev server on :3000
+```
+
+A real build: **Approve the plan → `startRealBuild`** creates a sandbox, writes the scaffold (themed UI kit + app shell) and installs dependencies → the browser calls **`buildStep`** repeatedly; each step is one model call plus its tool calls, with the job state in `build_runs` (so a reload resumes it) → **`finish`** re-runs the build, starts the dev server, saves the real files, a version and the checks that ran → Test → Ship.
+
+## Tech
+Next.js 16 (App Router) · TypeScript · Tailwind v4 + shadcn/ui · Supabase (`@supabase/ssr`) · Vercel Sandbox · Anthropic SDK · React Flow · Monaco · Vercel.
+
+```
+app/              routes: landing, login, onboarding, (app)/*, p/[id] workspace, preview/[id], live/[slug]
+components/       workspace/ (stepper, chat, stage cards, code, sandbox preview), agents/, app-preview/, shell/
+lib/ai/           gateway + model registry, planner (questions, plan, screens), build agent harness, agent chat, editor AI
+lib/actions/      server actions: projects, workspace, build (sandbox), github, agents, app data, security, team…
+lib/sandbox.ts    the only provider-specific sandbox code
+lib/script/       quick build timeline + per-stack template code
+supabase/         migrations 0001–0006 (schema, RLS, usage ledger, build runs)
 ```
 
 ## Run locally
-1. Create a Supabase project and run `supabase/migrations/0001_init.sql`, then `0002_features.sql`, in the SQL editor.
-2. In Supabase **Auth → URL configuration**, set Site URL to `http://localhost:3000` and add `http://localhost:3000/**` to the redirect URLs. Enable the Email, Google and GitHub providers.
+1. Create a Supabase project and run `supabase/migrations/0001` → `0006` in order in the SQL editor.
+2. In Supabase **Auth → URL configuration**, set Site URL to `http://localhost:3000` and add `http://localhost:3000/**` to the redirect URLs. Enable the Email, Google and GitHub providers (GitHub needs the `repo` scope for pushing).
 3. Create `.env.local`:
    ```
    NEXT_PUBLIC_SUPABASE_URL=...
    NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-   GROQ_API_KEY=...        # optional; without it the AI steps use scripted answers
+   SECRETS_KEY=...          # 32 random bytes, base64
+   GROQ_API_KEY=...         # any of these enables the gateway; without one the AI steps use scripted answers
+   ANTHROPIC_API_KEY=...    # optional
+   OPENAI_API_KEY=...       # optional
+   GEMINI_API_KEY=...       # optional
    ```
-4. Run `npm install && npm run dev`. Then `npm run check` runs the logic self-checks.
+4. For real builds locally: `vercel link`, then put the `VERCEL_OIDC_TOKEN` from `vercel env pull` in `.env.development.local` (on Vercel it's automatic).
+5. Run `npm install && npm run dev`. `npm run check` runs the logic self-checks.
 
 ## What I'd do next
-Real code generation streamed from the agent, real OAuth for third-party tools via a token vault, real metering in place of estimated spend, a CLI/MCP server so Cursor or Claude Code can drive an Architect project, and multiplayer editing.
+A queue worker instead of the browser driving build steps, warm sandbox templates (snapshots) so builds skip `npm install`, deploying the sandbox build to real hosting with its own database, a GitHub App with webhooks for two-way sync, real OAuth for third-party tools through a connections service, and multiplayer editing.
