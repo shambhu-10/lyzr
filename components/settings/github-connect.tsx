@@ -1,17 +1,11 @@
 "use client";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
+import { connectGitHub } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { GithubIcon } from "@/components/icons";
 
 export function GithubConnect({ connected, login }: { connected: boolean; login?: string }) {
-  const connect = async () => {
-    const { error } = await createClient().auth.linkIdentity({
-      provider: "github",
-      options: { redirectTo: `${location.origin}/auth/callback?next=/settings?s=github`, scopes: "read:user" },
-    });
-    if (error) toast.error(error.message);
-  };
+  const connect = () => connectGitHub("/settings?s=github").catch(() => toast.error("Couldn't reach GitHub."));
   return (
     <div className="flex flex-wrap items-center gap-4 rounded-xl border bg-card p-4">
       <GithubIcon className="size-6" />

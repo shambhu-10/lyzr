@@ -2,15 +2,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Check, ChevronLeft, Code2, Share2, Wand2 } from "lucide-react";
-import { toast } from "sonner";
 import { LogoMark } from "@/components/logo";
 import { GithubIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { renameProject } from "@/lib/actions/projects";
 import { ShareDialog } from "./share-dialog";
+import { GithubDialog } from "./github-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LensTip } from "@/components/lens-info";
 import { STAGES, type Mode, type Project, type Stage } from "@/lib/types";
@@ -77,28 +75,7 @@ export function WorkspaceHeader({ project, mode, onMode, view, onView, credits, 
 
       <ShareDialog project={project} name={name} open={share} onOpenChange={setShare} isOwner={role === "owner"} />
 
-      <Dialog open={gh} onOpenChange={setGh}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><GithubIcon /> GitHub</DialogTitle>
-            <DialogDescription>{mode === "developer" ? "Two-way sync: every build is a commit, every chat session can be a branch." : "Keep a backup of your app's code in your own GitHub account."}</DialogDescription>
-          </DialogHeader>
-          {mode === "developer" ? (
-            <div className="space-y-3 text-sm">
-              <div className="grid grid-cols-[90px_1fr] items-center gap-2">
-                <span className="text-muted-foreground">Repository</span><Input defaultValue={`${project.slug.replace(/-[a-z0-9]{4}$/, "")}`} className="font-mono text-xs" />
-                <span className="text-muted-foreground">Branch</span><Input defaultValue="architect/session-1" className="font-mono text-xs" />
-              </div>
-              <label className="flex items-center justify-between rounded-lg border p-2.5"><span>Open a pull request on each build</span><Switch defaultChecked /></label>
-              <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => { toast.success("Pushed 12 files to architect/session-1"); setGh(false); }}>Push now</Button><Button onClick={() => { toast.success("Pull request #1 opened"); setGh(false); }}>Open PR</Button></div>
-            </div>
-          ) : (
-            <div className="space-y-3 text-sm">
-              <label className="flex items-center justify-between rounded-lg border p-3"><span><span className="block font-medium">Back up to GitHub</span><span className="text-xs text-muted-foreground">Saves every version automatically. You own the code.</span></span><Switch onCheckedChange={(v) => v && toast.success("Backups on — repo created in your GitHub")} /></label>
-              <p className="text-xs text-muted-foreground">Connect GitHub in Settings if you haven&apos;t yet. Developers on your team can pick it up from there.</p>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <GithubDialog project={project} mode={mode} open={gh} onOpenChange={setGh} />
     </header>
   );
 }

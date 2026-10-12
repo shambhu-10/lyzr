@@ -33,8 +33,8 @@ export async function GET(request: Request) {
 
   const { data: profile } = await supabase.from("profiles").select("onboarded").eq("id", data.user.id).single();
   const res = NextResponse.redirect(`${origin}${profile?.onboarded ? safeNext : "/onboarding"}`);
-  // GitHub token is only available right after sign-in; keep it server-side for listing repos on Import.
-  if (data.session?.provider_token && data.user.app_metadata.provider === "github") {
+  // GitHub token is only available right after sign-in / linking; keep it server-side (Import, push to GitHub).
+  if (data.session?.provider_token && (data.user.app_metadata.provider === "github" || searchParams.get("provider") === "github")) {
     res.cookies.set("gh_token", data.session.provider_token, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 8 });
   }
   return res;
