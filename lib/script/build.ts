@@ -53,7 +53,6 @@ export function buildSteps(plan: Plan, framework = "lyzr", stack: Stack = DEFAUL
   return steps;
 }
 
-export type { Check };
 
 export function testChecks(plan: Plan, demo: boolean): Check[] {
   return [

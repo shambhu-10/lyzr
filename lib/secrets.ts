@@ -1,2 +1,2 @@
 import "server-only";
-export { encryptSecret, decryptSecret } from "./secret-box";
+export { encryptSecret } from "./secret-box";

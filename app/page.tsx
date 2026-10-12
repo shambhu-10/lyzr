@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FRAMEWORKS as AGENT_FRAMEWORKS } from "@/lib/catalog";
 import { ArrowRight, Check, Code2, GitBranch, GitFork, Palette, ShieldCheck, Sparkles, Type, Users, Wallet, Wand2 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ const STEPS = [
   { n: "05", t: "Ship", d: "A real security check catches exposed keys and gaps, fixes them in one click, then gives you a live URL." },
 ];
 
-const FRAMEWORKS = ["Lyzr", "LangGraph", "CrewAI", "OpenAI Agents SDK", "Google ADK", "Mastra"];
+const FRAMEWORKS = AGENT_FRAMEWORKS.map((f) => f.label);
 
 export default async function Landing() {
   const apps = await getShowcase(6);

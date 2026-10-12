@@ -1,7 +1,5 @@
 import { DEFAULT_MODEL, MODEL_REGISTRY } from "@/lib/ai/models";
 
-export { modelLabel } from "@/lib/ai/models";
-
 export const FRAMEWORKS = [
   { id: "lyzr", label: "Lyzr", lang: "Python" },
   { id: "langgraph", label: "LangGraph", lang: "Python" },

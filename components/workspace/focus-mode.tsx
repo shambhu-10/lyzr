@@ -88,7 +88,7 @@ export function MusicPlayer() {
     <div className="flex items-center gap-2">
       <button key={nudge ? `n${nudge}` : "idle"} onClick={music.toggle} title="Calm generated music to stay in flow" aria-pressed={on}
         className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition", on ? "border-brand bg-brand-soft text-brand" : "text-muted-foreground hover:bg-muted hover:text-foreground", !on && wanted && "ring-2 ring-brand/25", nudge > 0 && (on ? "fm-bounce" : "fm-pulse"))}>
-        {on ? <Pause className="size-3" /> : <Headphones className="size-3" />} {on ? "Focus music" : "Focus music"}
+        {on ? <Pause className="size-3" /> : <Headphones className="size-3" />} Focus music
         {on && <span className="flex h-2.5 items-end gap-px" aria-hidden>{[0, 1, 2].map((i) => <span key={i} className="w-0.5 animate-pulse rounded bg-brand" style={{ height: `${45 + i * 25}%`, animationDelay: `${i * 0.2}s` }} />)}</span>}
       </button>
       {on && (

@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createClient, requireUser } from "@/lib/supabase/server";
-import { agentReply, runAgentTask, runEval, type Turn } from "@/lib/ai/agent-chat";
+import { agentReply, runEval, type Turn } from "@/lib/ai/agent-chat";
 import { sampleContext } from "@/lib/sample-data";
 import { logUsage, outOfCredits } from "@/lib/usage-log";
 import type { Plan } from "@/lib/types";
@@ -40,7 +40,7 @@ export async function runBlockAgent(input: { projectId?: string; slug?: string; 
   }
   if (!plan) throw new Error("App not found");
   const a = plan.agents.find((x) => x.name === input.agent) ?? plan.agents[0];
-  const r = await runAgentTask({ name: a.name, model, instructions: `${a.role}. If a selectedItem is provided, work only on that item. Never send, post or delete anything; produce drafts for the user to approve.` }, task, context);
+  const r = await agentReply({ name: a.name, model, instructions: `${a.role}. If a selectedItem is provided, work only on that item. Never send, post or delete anything; produce drafts for the user to approve.` }, context, [{ role: "user", content: task }]);
   if (projectId) await logUsage(supabase, projectId, "agent", [r.usage]);
   return { text: r.text, live: r.live };
 }
@@ -80,10 +80,4 @@ export async function createAgent(form: FormData) {
   }).select("id").single();
   revalidatePath("/agents");
   return data?.id as string;
-}
-
-export async function deleteAgent(agentId: string) {
-  const { supabase } = await requireUser();
-  await supabase.from("agents").delete().eq("id", agentId);
-  revalidatePath("/agents");
 }

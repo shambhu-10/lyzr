@@ -70,13 +70,3 @@ export type Project = {
   created_at: string;
   updated_at: string;
 };
-
-export type Profile = {
-  id: string;
-  full_name: string | null;
-  org_name: string | null;
-  role: string | null;
-  default_mode: Mode;
-  onboarded: boolean;
-  bonus_credits?: number;
-};

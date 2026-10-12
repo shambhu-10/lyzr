@@ -3,10 +3,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/supabase/server";
 import { FRAMEWORKS, toStack } from "@/lib/catalog";
+import { slug } from "@/lib/script/files";
 import { THEME_PRESETS, type AppTheme } from "@/lib/theme";
 
-const slugify = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32) || "project";
+const slugify = (s: string) => slug(s).slice(0, 32) || "project";
 
 /** Short human title from the prompt until the plan names it properly. */
 const draftName = (prompt: string) => {

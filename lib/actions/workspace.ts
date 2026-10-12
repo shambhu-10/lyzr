@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/supabase/server";
 import { changeApp, clarify, designLooks, detectKind, generateScreen, makePlan, makeTechSpec } from "@/lib/ai/planner";
 import { providedEnv, sanitizeTech } from "@/lib/tech-spec";
 import { llmEnabled } from "@/lib/ai/llm";
-import { filesFor } from "@/lib/script/files";
+import { filesFor, slug as toSlug } from "@/lib/script/files";
 import { logUsage, outOfCredits } from "@/lib/usage-log";
 import { diffStats } from "@/lib/diff";
 import { estimate } from "@/lib/ai/estimate";
@@ -56,7 +56,7 @@ export async function submitAnswers(id: string, answers: string) {
   if (project.source?.theme && !clean.trigger) clean.theme = project.source.theme; // look picked in the Home "+" menu
   await logUsage(supabase, id, "plan", usage);
   // First plan names the product — give the public URL that name too (it's not live yet, so nothing breaks).
-  const slug = `${clean.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 28) || "app"}-${crypto.randomUUID().slice(0, 4)}`;
+  const slug = `${toSlug(clean.name).slice(0, 28) || "app"}-${crypto.randomUUID().slice(0, 4)}`;
   await supabase.from("projects").update({ plan: clean, name: clean.name, slug, updated_at: touch() }).eq("id", id);
   const later = clean.scope.filter((s) => s.status === "later").length;
   const reply = await say(supabase, id, {

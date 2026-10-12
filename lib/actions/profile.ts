@@ -29,8 +29,3 @@ export async function myCredits(projectId: string) {
   const spend = await mySpend(supabase);
   return { left: balance(spentOn(spend), profile?.bonus_credits), project: spentOn(spend, projectId) };
 }
-
-export async function setDefaultMode(mode: "builder" | "developer") {
-  const { supabase, user } = await requireUser();
-  await supabase.from("profiles").update({ default_mode: mode }).eq("id", user.id);
-}

@@ -32,7 +32,6 @@ export const MODEL_REGISTRY: ModelInfo[] = [
 
 export const DEFAULT_MODEL = "openai/gpt-oss-120b";
 export const modelInfo = (id?: string) => MODEL_REGISTRY.find((m) => m.id === id);
-export const modelLabel = (id?: string) => { const m = modelInfo(id); return m ? `${m.label} · ${PROVIDER_LABEL[m.provider]}` : (id ?? ""); };
 
 /** Real cost of one call from the registry's list price (null when the price isn't published). */
 export const costOf = (id: string, inputTokens: number, outputTokens: number) => {

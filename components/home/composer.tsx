@@ -24,7 +24,6 @@ const EXAMPLES = [
   "A hiring pipeline app with an AI that scores every new CV…",
   "An agent that watches HubSpot and pings the owner about hot leads…",
 ];
-const STATIC = "Describe the app or agent you want to build…";
 
 /**
  * One prompt box. The "+" menu holds everything optional (attach, import, a look, "build an agent");
@@ -40,7 +39,7 @@ export function Composer({ mode }: { mode: Mode }) {
   const [file, setFile] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
-  const placeholder = useTypedPlaceholder(EXAMPLES, !prompt && !focused, STATIC);
+  const placeholder = useTypedPlaceholder(EXAMPLES, !prompt && !focused);
 
   useEffect(() => {
     const p = takePendingPrompt();
