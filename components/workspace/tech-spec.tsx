@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Editable } from "./editable";
 import { ModelPick, Pick } from "@/components/pick";
 import { suggestTech } from "@/lib/actions/workspace";
-import { FRAMEWORKS, MODELS, STACK, type Stack } from "@/lib/catalog";
+import { FRAMEWORKS, STACK, type Stack } from "@/lib/catalog";
+import { MODEL_REGISTRY } from "@/lib/ai/models";
 import { ACCESS, COLUMN_TYPES, schemaSql, type Table, type TechSpec as Spec } from "@/lib/tech-spec";
 import { filesFor, techFor } from "@/lib/script/files";
 import type { Plan } from "@/lib/types";
@@ -50,7 +51,7 @@ export function TechSpecView({ projectId, plan, stack, framework, canEdit, onPla
             <Choice label="Auth" value={stack.auth} options={STACK.auth} disabled={!canEdit} onChange={(v) => onStack({ ...stack, auth: v }, framework)} />
           </>}
           <Choice label="Agent framework" value={framework} options={FRAMEWORKS} disabled={!canEdit} onChange={(v) => onStack(stack, v)} />
-          <Choice label="Model" value={stack.model} options={MODELS} disabled={!canEdit} onChange={(v) => onStack({ ...stack, model: v }, framework)} />
+          <Choice label="Model" value={stack.model} options={MODEL_REGISTRY} disabled={!canEdit} onChange={(v) => onStack({ ...stack, model: v }, framework)} />
         </div>
       </section>
 
