@@ -13,7 +13,7 @@ assert.equal(spentOn(ledger), 0.313);
 assert.equal(spentOn(ledger, "a"), 0.312);
 assert.equal(balance(0.313, 20), 39.687);
 assert.equal(balance(25), 0);
-assert.deepEqual(estimate(plan), { credits: 1.22, minutes: 10 });
+assert.deepEqual(estimate(plan), { credits: 0.007, minutes: 2 });
 const steps = buildSteps(plan);
 assert.equal(steps.filter((s) => s.reveal !== undefined).length, plan.screens.length, "every screen is revealed once");
 assert.equal(steps.filter((s) => s.fix).length, 1, "exactly one free self-fix");

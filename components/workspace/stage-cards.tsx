@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { money } from "@/lib/ai/estimate";
 import { AlertTriangle, BarChart3, Check, Copy, ExternalLink, Eye, KeyRound, Loader2, Pause, Play, Plug, Rocket, ShieldCheck, Terminal } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -90,7 +91,7 @@ export function ConnectCard({ plan, project, onSet, onStart, reusable = [], buil
         <p className="mt-3 rounded-lg bg-muted p-2.5 text-xs text-muted-foreground">Your app is already built. Connection changes apply right away — no rebuild needed.</p>
       ) : (
         <Button className="mt-3 w-full" disabled={pending.length > 0} onClick={onStart}>
-          {pending.length ? `Connect or skip ${pending.length} more to continue` : `Start build · ~$${plan.estimate.credits.toFixed(2)} · ~${plan.estimate.minutes} min`}
+          {pending.length ? `Connect or skip ${pending.length} more to continue` : `Start build · ~${money(plan.estimate.credits)} · ~${plan.estimate.minutes} min`}
         </Button>
       )}
       {project.demo_data && !pending.length && <p className="mt-2 text-[11px] text-muted-foreground">Skipped accounts use sample data for now — connect them anytime; the Ship check will remind you.</p>}
@@ -342,7 +343,7 @@ export function LiveCard({ project, spent, later, onAddBack, author }: { project
       <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
         <div className="rounded-lg bg-muted p-2"><div className="text-base font-semibold">{project.views ?? 0}</div>views</div>
         <div className="rounded-lg bg-muted p-2"><div className="text-base font-semibold">{project.remixes ?? 0}</div>remixes</div>
-        <div className="rounded-lg bg-muted p-2"><div className="text-base font-semibold">${spent.toFixed(2)}</div>total spent</div>
+        <div className="rounded-lg bg-muted p-2"><div className="text-base font-semibold">{money(spent)}</div>total spent</div>
       </div>
       <div className="mt-3 rounded-lg border p-2.5">
         <label className="flex items-center justify-between gap-3 text-sm"><span><span className="block font-medium">Show in community gallery</span><span className="text-xs text-muted-foreground">Others can try it and remix a copy. Your data and accounts are never shared.</span></span>

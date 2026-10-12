@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { money } from "@/lib/ai/estimate";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Bot, Check, GitFork, Lock, Plug } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -41,7 +42,7 @@ export default async function Remix({ params }: PageProps<"/remix/[slug]">) {
           ) : (
             <Button asChild size="lg" className="mt-6 w-full"><Link href={`/login?next=/remix/${slug}`}><GitFork /> Sign in to remix — it&apos;s free</Link></Button>
           )}
-          <p className="mt-2 text-center text-xs text-muted-foreground">You&apos;ll land on the Connect step; building costs about ${plan.estimate.credits.toFixed(2)} in AI.</p>
+          <p className="mt-2 text-center text-xs text-muted-foreground">You&apos;ll land on the Connect step; building costs about {money(plan.estimate.credits)} in AI.</p>
         </div>
       </main>
     </div>
