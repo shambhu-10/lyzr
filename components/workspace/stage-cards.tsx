@@ -201,7 +201,7 @@ export function TestCard({ checks, mode, onFix, onPlayground, onContinue }: { ch
 /* ---------------- Ship ---------------- */
 
 export function ShipCard({ project, mode, onDeploy, onFixConnections, onFileChanged }: {
-  project: Project; mode: Mode; onDeploy: (t: "preview" | "production") => Promise<void>; onFixConnections: () => void; onFileChanged: (path: string, content: string) => void;
+  project: Project; mode: Mode; onDeploy: (shipAnyway: boolean) => Promise<void>; onFixConnections: () => void; onFileChanged: (path: string, content: string) => void;
 }) {
   const [phase, setPhase] = useState(-1);
   const [findings, setFindings] = useState<Finding[] | null>(null);
@@ -228,7 +228,7 @@ export function ShipCard({ project, mode, onDeploy, onFixConnections, onFileChan
   };
   const deploy = async () => {
     for (let i = 0; i < PHASES.length; i++) { setPhase(i); await new Promise((r) => setTimeout(r, 900)); }
-    await onDeploy("production");
+    await onDeploy(override);
     setPhase(-1);
   };
   const passed = [

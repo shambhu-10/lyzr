@@ -258,11 +258,14 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   };
 
   /* ---- Ship ---- */
-  const onDeploy = async (t: "preview" | "production") => {
-    const msg = await deploy(project.id, t);
-    setVersions((v) => [{ id: crypto.randomUUID(), label: t === "production" ? "Published to production" : "Preview deployment", created_at: new Date().toISOString() }, ...v]);
-    if (t === "production") { patch({ stage: "live" }); toast.success("You're live!"); } else toast.success("Preview deployed");
-    push([msg]);
+  const onDeploy = async (shipAnyway: boolean) => {
+    const r = await deploy(project.id, shipAnyway).catch(() => ({ error: "Couldn't deploy right now." }));
+    if ("error" in r) return void toast.error(r.error);
+    const version = r.version;
+    if (version) setVersions((v) => [version, ...v]);
+    patch({ stage: "live" });
+    toast.success("You're live!");
+    push([r.message]);
   };
 
   const openAgent = useCallback((name: string) => {

@@ -12,6 +12,7 @@ import type { Plan, Project, Stage } from "@/lib/types";
 import { ACCENTS, FONTS, RADII, SIDEBARS, type AppTheme } from "@/lib/theme";
 import { toStack, type Stack } from "@/lib/catalog";
 import { applyTextEdit } from "@/lib/plan-edit";
+import { securityScan } from "@/lib/actions/security";
 
 export type Msg = { id: string; role: "user" | "assistant"; kind: string; content: string; meta: Record<string, unknown> | null; created_at: string };
 
@@ -158,11 +159,15 @@ export async function revertTo(id: string, versionId: string) {
   return { files, plan: snap.plan ?? null };
 }
 
-export async function deploy(id: string, target: "preview" | "production") {
-  const { supabase } = await load(id);
-  await snapshot(id, target === "production" ? "Published to production" : "Preview deployment");
-  if (target === "production") await supabase.from("projects").update({ stage: "live", updated_at: touch() }).eq("id", id);
-  return say(supabase, id, { role: "assistant", kind: "text", content: target === "production" ? "🎉 You're live. Share the link, or keep chatting to improve it — every change ships as a new version you can roll back." : "Preview deployed. Share it with teammates for feedback before going to production." });
+/** Publish to production. The scan runs here too, not just in the UI, so calling this directly can't skip it. */
+export async function deploy(id: string, shipAnyway = false) {
+  const { supabase, project } = await load(id);
+  const high = (await securityScan(id)).filter((f) => f.severity === "high");
+  if (high.length && !shipAnyway) return { error: `Fix the ${high.length === 1 ? "high-severity issue" : `${high.length} high-severity issues`} first, or choose “ship anyway”.` };
+  const version = await saveVersion(supabase, id, project.plan, "Published to production", high.length ? { shippedWith: high.map((f) => f.id) } : {});
+  await supabase.from("projects").update({ stage: "live", updated_at: touch() }).eq("id", id);
+  const message = await say(supabase, id, { role: "assistant", kind: "text", content: "🎉 You're live. Share the link, or keep chatting to improve it — every change ships as a new version you can roll back." });
+  return { message, version };
 }
 
 /** Real post-build change: the model edits the app's screens, we regenerate their code and save a version with a plain summary. */

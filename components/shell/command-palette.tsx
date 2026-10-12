@@ -5,7 +5,7 @@ import { useTheme } from "next-themes";
 import { Bot, Compass, CreditCard, FolderInput, FolderKanban, HelpCircle, Home, LogOut, Moon, Plug, Plus, Settings } from "lucide-react";
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut } from "@/components/ui/command";
 import { listProjectsLite } from "@/lib/actions/projects";
-import { createClient } from "@/lib/supabase/client";
+import { signOut } from "@/lib/supabase/client";
 
 const PAGES = [
   { href: "/home", label: "Home", icon: Home },
@@ -46,7 +46,7 @@ export function CommandPalette() {
         <CommandGroup heading="Actions">
           <CommandItem onSelect={() => go("/home")}><Plus /> New project</CommandItem>
           <CommandItem onSelect={() => { setTheme(theme === "dark" ? "light" : "dark"); setOpen(false); }}><Moon /> Toggle dark mode</CommandItem>
-          <CommandItem onSelect={async () => { await createClient().auth.signOut(); go("/"); }}><LogOut /> Sign out</CommandItem>
+          <CommandItem onSelect={async () => { await signOut(); go("/"); }}><LogOut /> Sign out</CommandItem>
         </CommandGroup>
         {projects.length > 0 && (
           <>
