@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { money } from "@/lib/ai/estimate";
 import { AlertTriangle, BarChart3, Check, Copy, ExternalLink, Eye, KeyRound, Loader2, Pause, Play, Plug, Rocket, ShieldCheck, Terminal } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -14,11 +15,11 @@ import { setShowcase } from "@/lib/actions/community";
 import { Switch } from "@/components/ui/switch";
 import type { Finding } from "@/lib/security-scan";
 import { integrationById, type Integration } from "@/lib/integrations";
-import type { BuildStep, Check as TestCheck } from "@/lib/script/build";
-import type { Mode, Plan, Project } from "@/lib/types";
+import type { BuildStep } from "@/lib/script/build";
+import type { Check as TestCheck, Mode, Plan, Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { projectSpend } from "@/lib/usage";
 import { useOrigin } from "@/hooks/use-origin";
+import { MAX_STEPS, type RunLite } from "@/lib/workspace-types";
 
 function Card({ title, icon, children, tone }: { title: string; icon: React.ReactNode; children: React.ReactNode; tone?: "dev" }) {
   return (
@@ -90,7 +91,7 @@ export function ConnectCard({ plan, project, onSet, onStart, reusable = [], buil
         <p className="mt-3 rounded-lg bg-muted p-2.5 text-xs text-muted-foreground">Your app is already built. Connection changes apply right away — no rebuild needed.</p>
       ) : (
         <Button className="mt-3 w-full" disabled={pending.length > 0} onClick={onStart}>
-          {pending.length ? `Connect or skip ${pending.length} more to continue` : `Start build · ~$${plan.estimate.credits.toFixed(2)} · ~${plan.estimate.minutes} min`}
+          {pending.length ? `Connect or skip ${pending.length} more to continue` : `Start build · ~${money(plan.estimate.credits)} · ~${plan.estimate.minutes} min`}
         </Button>
       )}
       {project.demo_data && !pending.length && <p className="mt-2 text-[11px] text-muted-foreground">Skipped accounts use sample data for now — connect them anytime; the Ship check will remind you.</p>}
@@ -198,10 +199,46 @@ export function TestCard({ checks, mode, onFix, onPlayground, onContinue }: { ch
   );
 }
 
+/* ---------------- Real build (sandbox) ---------------- */
+
+const plainFile = (path: string) => {
+  const name = path.split("/").pop()!.replace(/\.(jsx|js|css)$/, "");
+  return path.startsWith("src/screens/") ? `Writing the “${name.replace(/([a-z])([A-Z])/g, "$1 $2")}” screen` : name === "data" ? "Adding sample data" : name === "App" ? "Setting up navigation" : name === "styles" ? "Polishing the styles" : `Writing ${name}`;
+};
+
+/** Live log of the real build: what the agent wrote, every build it ran, and what it cost. */
+export function RealBuildCard({ run, mode, onCancel }: { run: RunLite; mode: Mode; onCancel: () => void }) {
+  const done = run.status !== "running";
+  const shown = run.events.filter((e) => mode === "developer" || e.t !== "note" || run.events.length < 3).slice(-14);
+  return (
+    <Card title={run.status === "failed" ? "Build stopped" : done ? "Built and verified" : "Building in a sandbox"} icon={run.status === "failed" ? <AlertTriangle className="size-3.5 text-warning" /> : done ? <Check className="size-3.5 text-success" /> : <Loader2 className="size-3.5 animate-spin text-brand" />} tone={mode === "developer" ? "dev" : undefined}>
+      <div className="mb-3 flex justify-between gap-3 text-xs text-muted-foreground">
+        <span>Step {run.step} of {MAX_STEPS} · {(run.usage.tokens ?? 0).toLocaleString()} tokens · ${(run.usage.cost ?? 0).toFixed(4)}</span>
+        {run.status !== "done" && <button onClick={onCancel} className="shrink-0 underline-offset-2 hover:underline">{run.status === "failed" ? "Use the quick build" : "Stop"}</button>}
+      </div>
+      <ul className={cn("space-y-1.5", mode === "developer" ? "font-mono text-[11px]" : "text-sm")}>
+        {shown.map((e, i) => (
+          <li key={i} className="flex items-start gap-2">
+            {e.t === "error" || (e.t === "build" && !e.ok) ? <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" /> : <Check className="mt-0.5 size-3.5 shrink-0 text-success" />}
+            <span className="min-w-0">
+              {e.t === "file" ? (mode === "developer" ? `write ${e.path} (${e.lines} lines)` : plainFile(e.path))
+                : e.t === "build" ? (mode === "developer" ? `$ vite build → ${e.ok ? "ok" : "failed"}` : e.ok ? "The app builds without errors" : "Found a build error — fixing it")
+                : e.t === "done" ? e.summary : e.text}
+              {mode === "developer" && e.t === "build" && !e.ok && <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap text-destructive">{e.tail}</pre>}
+            </span>
+          </li>
+        ))}
+        {!done && <li className="flex items-center gap-2 text-muted-foreground"><Loader2 className="size-3.5 animate-spin" /> {mode === "developer" ? `${run.usage.model ?? "model"} working…` : "Writing your app…"}</li>}
+      </ul>
+      <p className="mt-3 text-[11px] text-muted-foreground">Real code in an isolated microVM. Architect doesn&apos;t call it done until the production build passes.</p>
+    </Card>
+  );
+}
+
 /* ---------------- Ship ---------------- */
 
 export function ShipCard({ project, mode, onDeploy, onFixConnections, onFileChanged }: {
-  project: Project; mode: Mode; onDeploy: (t: "preview" | "production") => Promise<void>; onFixConnections: () => void; onFileChanged: (path: string, content: string) => void;
+  project: Project; mode: Mode; onDeploy: (shipAnyway: boolean) => Promise<void>; onFixConnections: () => void; onFileChanged: (path: string, content: string) => void;
 }) {
   const [phase, setPhase] = useState(-1);
   const [findings, setFindings] = useState<Finding[] | null>(null);
@@ -228,7 +265,7 @@ export function ShipCard({ project, mode, onDeploy, onFixConnections, onFileChan
   };
   const deploy = async () => {
     for (let i = 0; i < PHASES.length; i++) { setPhase(i); await new Promise((r) => setTimeout(r, 900)); }
-    await onDeploy("production");
+    await onDeploy(override);
     setPhase(-1);
   };
   const passed = [
@@ -287,7 +324,7 @@ export function ShipCard({ project, mode, onDeploy, onFixConnections, onFileChan
 
 /* ---------------- Live ---------------- */
 
-export function LiveCard({ project, later, onAddBack, author }: { project: Project; later: string[]; onAddBack: (s: string) => void; author: string }) {
+export function LiveCard({ project, spent, later, onAddBack, author }: { project: Project; spent: number; later: string[]; onAddBack: (s: string) => void; author: string }) {
   const url = `${useOrigin()}/live/${project.slug}`;
   const [inGallery, setInGallery] = useState(!!project.showcase);
   const [shownAs, setShownAs] = useState(project.showcase_author ?? author);
@@ -306,7 +343,7 @@ export function LiveCard({ project, later, onAddBack, author }: { project: Proje
       <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
         <div className="rounded-lg bg-muted p-2"><div className="text-base font-semibold">{project.views ?? 0}</div>views</div>
         <div className="rounded-lg bg-muted p-2"><div className="text-base font-semibold">{project.remixes ?? 0}</div>remixes</div>
-        <div className="rounded-lg bg-muted p-2"><div className="text-base font-semibold">${projectSpend(project).toFixed(2)}</div>total spent</div>
+        <div className="rounded-lg bg-muted p-2"><div className="text-base font-semibold">{money(spent)}</div>total spent</div>
       </div>
       <div className="mt-3 rounded-lg border p-2.5">
         <label className="flex items-center justify-between gap-3 text-sm"><span><span className="block font-medium">Show in community gallery</span><span className="text-xs text-muted-foreground">Others can try it and remix a copy. Your data and accounts are never shared.</span></span>

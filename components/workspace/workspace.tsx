@@ -11,7 +11,9 @@ import { Tour } from "./tour";
 import { FocusTips, MusicPlayer } from "./focus-mode";
 import { DiffReview, type ProposedEdit } from "./diff-review";
 import { codeAI } from "./code-panel";
-import { BuildCard, ConnectCard, LiveCard, ShipCard, TestCard } from "./stage-cards";
+import { BuildCard, ConnectCard, LiveCard, RealBuildCard, ShipCard, TestCard } from "./stage-cards";
+import { SandboxPreview } from "./sandbox-preview";
+import { buildStep, cancelBuild, startRealBuild } from "@/lib/actions/build";
 import { AppPreview } from "@/components/app-preview/app-preview";
 import { AgentCanvas } from "@/components/agents/agent-canvas";
 import { AgentDrawer } from "@/components/agents/agent-drawer";
@@ -25,8 +27,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { buildSteps, testChecks } from "@/lib/script/build";
 import { filesFor } from "@/lib/script/files";
 import { toStack } from "@/lib/catalog";
-import { projectSpend, STARTING_CREDITS } from "@/lib/usage";
-import type { AgentRow, FileRow, VersionRow } from "@/lib/workspace-types";
+import { myCredits } from "@/lib/actions/profile";
+import type { AgentRow, BuildEvent, FileRow, RunLite, VersionRow } from "@/lib/workspace-types";
 import type { Mode, Plan, Project, Stage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useMedia } from "@/hooks/use-media";
@@ -54,18 +56,22 @@ function notifyDone(name: string) {
   try { if (document.hidden && "Notification" in window && Notification.permission === "granted") new Notification(`${name} is built`, { body: "Your app passed its build. Come back to test and ship it." }); } catch {}
 }
 
-export function Workspace({ initial, defaultMode, otherSpend, workspaceConnections = [], role = "owner", ownerName = "", bonus = 0 }: {
+export function Workspace({ initial, defaultMode, credits: initialCredits, workspaceConnections = [], role = "owner", ownerName = "", realBuilds = false, activeRun = null }: {
   initial: { project: Project; messages: Msg[]; files: FileRow[]; agents: AgentRow[]; versions: VersionRow[]; comments: Comment[] };
   defaultMode: Mode;
-  otherSpend: number;
+  realBuilds?: boolean; // sandboxes configured on this deployment → Build writes real code in a microVM
+  activeRun?: RunLite | null; // a real build still running (resume after a reload)
+  credits: { left: number; project: number }; // metered: what's left overall, and what this project has used
   workspaceConnections?: string[];
   role?: "owner" | "editor" | "viewer";
   ownerName?: string;
-  bonus?: number;
 }) {
   const viewer = role === "viewer";
   const [project, setProject] = useState(initial.project);
   const [messages, setMessages] = useState(initial.messages);
+  const [spend, setSpend] = useState(initialCredits);
+  // Every AI step ends with a message, so re-read the metered balance when one arrives.
+  useEffect(() => { if (messages.length > initial.messages.length) myCredits(initial.project.id).then(setSpend).catch(() => {}); }, [messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [files, setFiles] = useState(initial.files);
   const [agents, setAgents] = useState(initial.agents);
   const [versions, setVersions] = useState(initial.versions);
@@ -142,6 +148,14 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   /** Real change request after the app is built: AI edits the screens, code and a version with a summary follow. */
   const change = async (text: string) => {
     setBusy("Changing your app…"); setTab("preview");
+    // Built in a sandbox → the same build agent edits the real code there; otherwise the quick path edits the design.
+    if (realBuilds && source.preview && !plan?.trigger) {
+      const r = await startRealBuild(project.id, text).catch(() => ({ error: "Couldn't reach the sandbox." }));
+      if ("error" in r) { toast.error(r.error); setBusy(null); return false; }
+      if ("message" in r && r.message) push([r.message as Msg]);
+      setRun(r.run as RunLite); setPreviewMode("app"); setBusy("Changing your app in its sandbox…");
+      return true;
+    }
     try {
       const r = await quickChange(project.id, text);
       push(r.messages);
@@ -189,6 +203,11 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   const buildStarted = useRef(0);
   const generating = useRef(false);
   const building = project.stage === "build";
+  const [run, setRun] = useState<RunLite | null>(activeRun); // a real sandbox build (null = scripted build)
+  const [previewMode, setPreviewMode] = useState<"app" | "design">("app");
+  const [retry, setRetry] = useState(0);
+  const [previewKey, setPreviewKey] = useState(0); // bump to reload the running app
+  const stepping = useRef(false);
 
   useEffect(() => {
     if (!building || uiReady || generating.current) return;
@@ -200,7 +219,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   }, [building, uiReady, project.id]);
 
   useEffect(() => {
-    if (!building || paused || !steps.length) return;
+    if (!building || paused || !steps.length || run) return; // a real build drives itself (below)
     if (at >= steps.length) {
       if (finishing.current || !uiReady) return;
       finishing.current = true;
@@ -219,20 +238,60 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
     return () => clearTimeout(t);
   }, [building, paused, at, steps, project.id, uiReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Real build: the browser drives the job one short step at a time; the server keeps the state, so a reload resumes it.
+  useEffect(() => {
+    if (!run?.id || run.status !== "running" || stepping.current) return;
+    stepping.current = true;
+    buildStep(run.id)
+      .then((r) => {
+        if ("error" in r) { toast.error(r.error); setRun((x) => x && { ...x, status: "failed" }); return; }
+        setTerminal((t) => [...t, ...r.events.map(eventLine)]);
+        setRun((x) => x && { ...x, step: r.step, status: r.status, usage: r.usage, events: [...x.events, ...r.events] });
+        if (r.status === "failed") { setBusy(null); toast.error(run.request ? "The agent couldn't make that change pass the build — your app is unchanged." : "The build agent couldn't get a passing build. Use the quick build, or try again."); }
+        if (r.result && run.request) { // a change finished
+          const res = r.result;
+          setFiles(res.files); if (res.message) push([res.message as Msg]);
+          const ver = res.version;
+          if (ver) setVersions((v) => [{ ...ver, summary: ver.label } as VersionRow, ...v]);
+          patch({ source: res.source as Project["source"] }); setPreviewKey((k) => k + 1); setBusy(null);
+          toast.success("Change applied — the build passes");
+        } else if (r.result) {
+          const res = r.result;
+          setFiles(res.files); setAgents(res.agents as AgentRow[]); if (res.message) push([res.message as Msg]);
+          setVersions((v) => [{ id: crypto.randomUUID(), label: "First build", created_at: new Date().toISOString(), summary: "Built and verified in a sandbox." }, ...v]);
+          patch({ stage: "test", source: res.source as Project["source"] }); setView("test"); setTab("preview"); setPreviewMode("app");
+          notifyDone(project.name);
+          toast.success("Built and verified in a sandbox");
+        }
+      })
+      .catch(() => setTimeout(() => setRetry((n) => n + 1), 3000)) // network blip: try the same step again
+      .finally(() => { stepping.current = false; });
+  }, [run, retry]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const quickBuild = async () => {
+    if (run?.id && run.status === "running") await cancelBuild(run.id).catch(() => {});
+    setRun(null); // the scripted build takes over from here
+  };
+
   const startBuild = async () => {
     setAt(0); setTerminal([]); finishing.current = false; generating.current = false; setUiReady(false); buildStarted.current = Date.now();
     setTab(mode === "developer" ? "code" : "preview");
     setMobilePane("chat");
     try { if ("Notification" in window && Notification.permission === "default") void Notification.requestPermission(); } catch {}
+    const real = realBuilds && !!plan?.screens.length;
+    if (real) setRun({ id: "", status: "running", step: 0, events: [{ t: "note", text: "Starting a sandbox and installing React + Vite…" }], usage: {} });
     await goStage("build");
+    if (!real) return;
+    const r = await startRealBuild(project.id).catch(() => ({ error: "Couldn't start a sandbox." }));
+    if ("error" in r) { toast(`${r.error} Using the quick build instead.`); setRun(null); } else setRun(r.run as RunLite);
   };
 
   const revealed = !plan ? 0 : building ? steps.slice(0, at).filter((s) => s.reveal !== undefined).length : reached >= ORDER.indexOf("test") ? plan.screens.length : 0;
   const liveFiles: FileRow[] = useMemo(() => {
-    if (!building || !plan) return files;
+    if (!building || !plan || run) return files;
     const done = new Set(steps.slice(0, at + 1).map((s) => s.file).filter(Boolean));
     return filesFor(plan, framework, stack).filter((f) => (at > 0 && !f.role) || done.has(f.path)); // scaffold files first, screens as they're written
-  }, [building, plan, steps, at, files, framework, stack]);
+  }, [building, plan, steps, at, files, framework, stack, run]);
   const writing = building ? steps[at]?.file : undefined;
   const remaining = Math.round(steps.slice(at).reduce((a, s) => a + s.ms, 0) / 1000);
 
@@ -258,11 +317,14 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
   };
 
   /* ---- Ship ---- */
-  const onDeploy = async (t: "preview" | "production") => {
-    const msg = await deploy(project.id, t);
-    setVersions((v) => [{ id: crypto.randomUUID(), label: t === "production" ? "Published to production" : "Preview deployment", created_at: new Date().toISOString() }, ...v]);
-    if (t === "production") { patch({ stage: "live" }); toast.success("You're live!"); } else toast.success("Preview deployed");
-    push([msg]);
+  const onDeploy = async (shipAnyway: boolean) => {
+    const r = await deploy(project.id, shipAnyway).catch(() => ({ error: "Couldn't deploy right now." }));
+    if ("error" in r) return void toast.error(r.error);
+    const version = r.version;
+    if (version) setVersions((v) => [version, ...v]);
+    patch({ stage: "live" });
+    toast.success("You're live!");
+    push([r.message]);
   };
 
   const openAgent = useCallback((name: string) => {
@@ -272,21 +334,22 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
 
   const codeChat = tab === "code" && mode === "developer" && reached >= ORDER.indexOf("test");
   const placeholder = codeChat ? `Ask about ${openFile || "this file"} or ask for a change…` : !plan ? "Or describe anything else you want…" : project.stage === "plan" ? "Ask for changes to the plan…" : planFirst ? "Describe a change — I'll update the plan first…" : "Ask for a change, e.g. “add a search box to the inbox”…";
-  const credits = Math.max(0, STARTING_CREDITS + bonus - otherSpend - projectSpend(project));
+  const credits = spend.left;
   const later = plan?.scope.filter((s) => s.status === "later").map((s) => s.item) ?? [];
 
   const stageCard = () => {
     if (!plan || viewer) return null;
     if (ORDER.indexOf(view) > reached) return null;
     if (view === "connect") return <ConnectCard plan={plan} project={project} onSet={onSetConnection} onStart={startBuild} reusable={workspaceConnections} built={reached > ORDER.indexOf("build")} />;
+    if (view === "build" && run) return <RealBuildCard run={run} mode={mode} onCancel={quickBuild} />;
     if (view === "build") return building ? <BuildCard steps={steps} at={at} mode={mode} paused={paused} onPause={() => setPaused((p) => !p)} remaining={remaining} waitingForAI={!uiReady && steps[at]?.reveal !== undefined}
       focus={<FocusTips done={at >= steps.length} tips={[
         { label: "Re-read your plan", onClick: () => setTab("plan") },
         mode === "developer" ? { label: "Watch the code being written", onClick: () => setTab("code") } : { label: "Watch screens appear", onClick: () => setTab("preview") },
         ...(project.demo_data ? [{ label: "Connect real accounts", onClick: () => setView("connect") }] : []),
       ]} />} /> : <BuildCard steps={steps} at={steps.length} mode={mode} paused={false} onPause={() => {}} remaining={0} />;
-    if (view === "test") return <TestCard checks={testChecks(plan, project.demo_data)} mode={mode} onFix={() => setView("connect")} onPlayground={() => { setTab("agents"); if (agents[0]) setDrawer(agents[0]); }} onContinue={() => goStage("ship")} />;
-    if (view === "ship") return project.stage === "live" ? <LiveCard project={project} author={ownerName} later={later} onAddBack={(s) => change(`Add this from the plan's "later" list: ${s}`)} /> : <ShipCard project={project} mode={mode} onDeploy={onDeploy} onFixConnections={() => setView("connect")} onFileChanged={(p, c) => { setFiles((fs) => fs.map((f) => (f.path === p ? { ...f, content: c } : f))); setCodeKey((k) => k + 1); }} />;
+    if (view === "test") return <TestCard checks={source.build?.checks ?? testChecks(plan, project.demo_data)} mode={mode} onFix={() => setView("connect")} onPlayground={() => { setTab("agents"); if (agents[0]) setDrawer(agents[0]); }} onContinue={() => goStage("ship")} />;
+    if (view === "ship") return project.stage === "live" ? <LiveCard project={project} spent={spend.project} author={ownerName} later={later} onAddBack={(s) => change(`Add this from the plan's "later" list: ${s}`)} /> : <ShipCard project={project} mode={mode} onDeploy={onDeploy} onFixConnections={() => setView("connect")} onFileChanged={(p, c) => { setFiles((fs) => fs.map((f) => (f.path === p ? { ...f, content: c } : f))); setCodeKey((k) => k + 1); }} />;
     return null;
   };
 
@@ -329,6 +392,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
             ))}
             {tab === "preview" && canComment && !viewer && !plan?.trigger && (
               <div className="ml-auto flex items-center gap-2">
+                {source.preview && previewMode === "design" && <Button size="xs" variant="outline" onClick={() => setPreviewMode("app")}>Running app</Button>}
                 {openComments.length > 0 && <Button size="xs" onClick={() => setReviewComments(true)} disabled={!!busy}><Send /> Review &amp; send {openComments.length}</Button>}
                 <Button size="xs" variant="outline" onClick={() => setLookOpen(true)} title="Change colours, corners and fonts"><Palette /> Look</Button>
                 <Button size="xs" variant={editing ? "default" : "outline"} onClick={() => { setEditing((v) => !v); setCommenting(false); }} title="Click any text in your app to change it — free, instant"><Type /> {editing ? "Done editing" : "Edit text"}</Button>
@@ -338,7 +402,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto bg-muted/30">
             {tab === "plan" && <PlanPanel plan={plan} mode={mode} framework={framework} busy={!!busy} canApprove={project.stage === "plan"} canEdit={!viewer && (project.stage === "plan" || project.stage === "connect")}
-              actual={reached >= ORDER.indexOf("test") ? { spent: projectSpend(project), seconds: source.build?.seconds } : undefined}
+              actual={reached >= ORDER.indexOf("test") ? { spent: spend.project, seconds: source.build?.seconds } : undefined}
               projectId={project.id} stack={stack} onPlan={(p) => patch({ plan: p })}
               onStack={async (st, fw) => {
                 const r = await setStack(project.id, st, fw).catch(() => ({ error: "Couldn't change the stack." }));
@@ -353,7 +417,8 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
                 if ("error" in r) { toast.error(r.error); patch({ plan }); return false; }
                 patch({ plan: r.plan, name: r.plan.name }); return true;
               }} />}
-            {tab === "preview" && plan?.trigger ? <AgentPreview plan={plan} agents={agents} slug={project.slug} live={project.stage === "live"} /> : tab === "preview" && (plan && (revealed || building) ? (
+            {tab === "preview" && source.preview && previewMode === "app" && !building && !plan?.trigger ? <SandboxPreview key={previewKey} projectId={project.id} working={run?.status === "running" && run.request ? `Applying your change · step ${run.step}` : null} onDesignView={() => setPreviewMode("design")} />
+            : tab === "preview" && plan?.trigger ? <AgentPreview plan={plan} agents={agents} slug={project.slug} live={project.stage === "live"} /> : tab === "preview" && (plan && (revealed || building) ? (
               <div className="h-full p-4">
                 {commenting && <p className="mb-2 text-center text-xs text-muted-foreground">Click any part of the app to leave a comment. Send them to Architect when you&apos;re done.</p>}
                 {editing && <p className="mb-2 text-center text-xs text-muted-foreground">Click any dashed text to change it. Enter saves, Esc cancels. Free, and every edit is a version you can undo.</p>}
@@ -479,3 +544,6 @@ function VersionsPanel({ versions, mode, onRevert }: { versions: VersionRow[]; m
     </ol>
   );
 }
+
+const eventLine = (e: BuildEvent) =>
+  e.t === "file" ? `  write ${e.path} (${e.lines} lines)` : e.t === "build" ? `$ vite build ${e.ok ? "✓" : "✗"}` : e.t === "done" ? `✓ ${e.summary}` : e.t === "error" ? `! ${e.text}` : `  ${e.text}`;

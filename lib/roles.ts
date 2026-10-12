@@ -6,5 +6,4 @@ export const ROLES = [
   { id: "founder", label: "Founder / Student", hint: "Ideas, MVPs, side projects", ideas: ["MVP landing page with waitlist", "Customer interview synthesizer", "Pitch deck feedback agent"] },
   { id: "developer", label: "Developer / Engineer", hint: "Code, agents, APIs", ideas: ["LangGraph research agent with chat UI", "Import my repo and add an AI feature", "Support triage agent on my API"] },
 ] as const;
-export type RoleId = (typeof ROLES)[number]["id"];
 export const roleById = (id?: string | null) => ROLES.find((r) => r.id === id) ?? ROLES[0];

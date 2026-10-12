@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { money } from "@/lib/ai/estimate";
 import { Editable } from "./editable";
 import { TechSpecView } from "./tech-spec";
 import type { Stack } from "@/lib/catalog";
@@ -205,12 +206,12 @@ export function PlanPanel({ plan, mode, framework, busy, canApprove, canEdit, on
       <div className="sticky bottom-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border bg-background/95 p-4 shadow-lg backdrop-blur">
         {actual ? (
           <div className="flex gap-6 text-sm">
-            <span className="flex items-center gap-2"><Wallet className="size-4 text-muted-foreground" /><span><span className="block text-xs text-muted-foreground">Spent so far</span><b>${actual.spent.toFixed(2)}</b></span></span>
+            <span className="flex items-center gap-2"><Wallet className="size-4 text-muted-foreground" /><span><span className="block text-xs text-muted-foreground">Spent so far</span><b>{money(actual.spent)}</b></span></span>
             {!!actual.seconds && <span className="flex items-center gap-2"><Clock className="size-4 text-muted-foreground" /><span><span className="block text-xs text-muted-foreground">Built in</span><b>{actual.seconds < 90 ? `${actual.seconds}s` : `${Math.round(actual.seconds / 60)} min`}</b></span></span>}
           </div>
         ) : (
           <div className="flex gap-6 text-sm">
-            <span className="flex items-center gap-2"><Wallet className="size-4 text-muted-foreground" /><span><span className="block text-xs text-muted-foreground">Estimated cost</span><b>~${plan.estimate.credits.toFixed(2)}</b></span></span>
+            <span className="flex items-center gap-2"><Wallet className="size-4 text-muted-foreground" /><span><span className="block text-xs text-muted-foreground">Estimated cost</span><b>~{money(plan.estimate.credits)}</b></span></span>
             <span className="flex items-center gap-2"><Clock className="size-4 text-muted-foreground" /><span><span className="block text-xs text-muted-foreground">Build time</span><b>~{plan.estimate.minutes} min</b></span></span>
           </div>
         )}

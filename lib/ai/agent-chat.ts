@@ -16,11 +16,6 @@ export async function agentReply(agent: Agent, sample: string, history: Turn[]):
   return { text: r.text, live: true, ms: r.usage.ms, tokens: r.usage.input_tokens + r.usage.output_tokens, usage: r.usage };
 }
 
-/** Run an agent from a button inside the generated app (real work on the screen's data). */
-export async function runAgentTask(agent: Agent, task: string, context: string): Promise<Reply> {
-  return agentReply(agent, context, [{ role: "user", content: task }]);
-}
-
 const Verdict = z.object({ pass: z.boolean(), reason: z.string().describe("One short sentence") });
 
 /** Plain-English evals: run the agent on the input, then an LLM judge checks the expectation. */

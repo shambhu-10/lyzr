@@ -1,16 +1,18 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createClient, requireUser } from "@/lib/supabase/server";
-import { agentReply, runAgentTask, runEval, type Turn } from "@/lib/ai/agent-chat";
+import { agentReply, runEval, type Turn } from "@/lib/ai/agent-chat";
 import { sampleContext } from "@/lib/sample-data";
-import { logUsage } from "@/lib/usage-log";
+import { logUsage, outOfCredits } from "@/lib/usage-log";
 import type { Plan } from "@/lib/types";
 import { toStack } from "@/lib/catalog";
 
 export type EvalCase = { input: string; expect: string; pass?: boolean; reason?: string; output?: string };
 
 export async function chatWithAgent(agentId: string, history: Turn[]) {
-  const { supabase } = await requireUser();
+  const { supabase, profile } = await requireUser();
+  const broke = await outOfCredits(supabase, profile?.bonus_credits);
+  if (broke) return { text: broke, live: false, ms: 0, tokens: 0 };
   const { data: agent } = await supabase.from("agents").select("name, instructions, model, project_id, projects(prompt)").eq("id", agentId).single();
   if (!agent) throw new Error("Agent not found");
   const prompt = (agent.projects as unknown as { prompt?: string } | null)?.prompt ?? "";
@@ -38,13 +40,15 @@ export async function runBlockAgent(input: { projectId?: string; slug?: string; 
   }
   if (!plan) throw new Error("App not found");
   const a = plan.agents.find((x) => x.name === input.agent) ?? plan.agents[0];
-  const r = await runAgentTask({ name: a.name, model, instructions: `${a.role}. If a selectedItem is provided, work only on that item. Never send, post or delete anything; produce drafts for the user to approve.` }, task, context);
+  const r = await agentReply({ name: a.name, model, instructions: `${a.role}. If a selectedItem is provided, work only on that item. Never send, post or delete anything; produce drafts for the user to approve.` }, context, [{ role: "user", content: task }]);
   if (projectId) await logUsage(supabase, projectId, "agent", [r.usage]);
   return { text: r.text, live: r.live };
 }
 
 export async function runEvals(agentId: string, cases: EvalCase[]) {
-  const { supabase } = await requireUser();
+  const { supabase, profile } = await requireUser();
+  const broke = await outOfCredits(supabase, profile?.bonus_credits);
+  if (broke) throw new Error(broke);
   const { data: agent } = await supabase.from("agents").select("name, instructions, model, project_id, projects(prompt)").eq("id", agentId).single();
   if (!agent) throw new Error("Agent not found");
   const sample = sampleContext((agent.projects as unknown as { prompt?: string } | null)?.prompt ?? "");
@@ -76,10 +80,4 @@ export async function createAgent(form: FormData) {
   }).select("id").single();
   revalidatePath("/agents");
   return data?.id as string;
-}
-
-export async function deleteAgent(agentId: string) {
-  const { supabase } = await requireUser();
-  await supabase.from("agents").delete().eq("id", agentId);
-  revalidatePath("/agents");
 }

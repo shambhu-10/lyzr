@@ -1,35 +1,24 @@
 import "server-only";
-import Groq from "groq-sdk";
 import { z } from "zod";
-import { structured, type Usage } from "./llm";
-
-const FAST = "openai/gpt-oss-20b"; // completions need speed more than depth
-const client = process.env.GROQ_API_KEY ? new Groq() : null;
-const PRICE = { in: 0.075, out: 0.3 };
+import { structured, llmEnabled, type Usage } from "./llm";
+import { generate } from "./gateway";
 
 const stripFences = (s: string) => s.replace(/^```[\w-]*\n?/, "").replace(/\n?```\s*$/, "");
 
-/** Ghost-text completion at the cursor: returns only the text to insert (may be empty). */
+/** Ghost-text completion at the cursor: returns only the text to insert (may be empty). Uses the fast tier — speed over depth. */
 export async function complete(path: string, prefix: string, suffix: string): Promise<{ text: string; usage: Usage | null }> {
-  if (!client) return { text: "", usage: null };
-  const t0 = Date.now();
+  if (!llmEnabled) return { text: "", usage: null };
   try {
-    const res = await client.chat.completions.create({
-      model: FAST,
-      reasoning_effort: "low",
-      max_completion_tokens: 400,
-      messages: [
-        { role: "system", content: "You are a code completion engine. Output ONLY the characters to insert at <CURSOR>, continuing exactly from the last character before it — never repeat any text that appears before <CURSOR> (for example if the line is `const hours = ` output only the expression). No explanations, no markdown fences. Complete the current statement or block (at most ~8 lines). If nothing useful fits, output nothing." },
-        { role: "user", content: `File: ${path}\n\n${prefix.slice(-3000)}<CURSOR>${suffix.slice(0, 1000)}` },
-      ],
+    const r = await generate({
+      tier: "fast",
+      effort: "low",
+      maxTokens: 400,
+      system: "You are a code completion engine. Output ONLY the characters to insert at <CURSOR>, continuing exactly from the last character before it — never repeat any text that appears before <CURSOR> (for example if the line is `const hours = ` output only the expression). No explanations, no markdown fences. Complete the current statement or block (at most ~8 lines). If nothing useful fits, output nothing.",
+      messages: [{ role: "user", content: `File: ${path}\n\n${prefix.slice(-3000)}<CURSOR>${suffix.slice(0, 1000)}` }],
     });
-    const u = res.usage;
-    return {
-      text: stripFences(res.choices[0]?.message?.content ?? "").replace(/<CURSOR>/g, ""),
-      usage: { model: FAST, input_tokens: u?.prompt_tokens ?? 0, output_tokens: u?.completion_tokens ?? 0, ms: Date.now() - t0, cost_usd: ((u?.prompt_tokens ?? 0) * PRICE.in + (u?.completion_tokens ?? 0) * PRICE.out) / 1e6 },
-    };
+    return { text: stripFences(r.text).replace(/<CURSOR>/g, ""), usage: r.usage };
   } catch (e) {
-    console.error("complete error", e instanceof Groq.APIError ? `${e.status} ${e.message}` : e);
+    console.error("complete error", e instanceof Error ? e.message : e);
     return { text: "", usage: null };
   }
 }

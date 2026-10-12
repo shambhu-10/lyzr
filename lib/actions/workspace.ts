@@ -1,17 +1,18 @@
 "use server";
 import { requireUser } from "@/lib/supabase/server";
 import { changeApp, clarify, designLooks, detectKind, generateScreen, makePlan, makeTechSpec } from "@/lib/ai/planner";
-import { seedExampleRows } from "@/lib/actions/app-data";
 import { providedEnv, sanitizeTech } from "@/lib/tech-spec";
 import { llmEnabled } from "@/lib/ai/llm";
-import { filesFor } from "@/lib/script/files";
-import { logUsage } from "@/lib/usage-log";
+import { filesFor, slug as toSlug } from "@/lib/script/files";
+import { logUsage, outOfCredits } from "@/lib/usage-log";
 import { diffStats } from "@/lib/diff";
 import { estimate } from "@/lib/ai/estimate";
 import type { Plan, Project, Stage } from "@/lib/types";
 import { ACCENTS, FONTS, RADII, SIDEBARS, type AppTheme } from "@/lib/theme";
 import { toStack, type Stack } from "@/lib/catalog";
 import { applyTextEdit } from "@/lib/plan-edit";
+import { securityScan } from "@/lib/actions/security";
+import { completeBuild } from "@/lib/complete-build";
 
 export type Msg = { id: string; role: "user" | "assistant"; kind: string; content: string; meta: Record<string, unknown> | null; created_at: string };
 
@@ -55,7 +56,7 @@ export async function submitAnswers(id: string, answers: string) {
   if (project.source?.theme && !clean.trigger) clean.theme = project.source.theme; // look picked in the Home "+" menu
   await logUsage(supabase, id, "plan", usage);
   // First plan names the product — give the public URL that name too (it's not live yet, so nothing breaks).
-  const slug = `${clean.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 28) || "app"}-${crypto.randomUUID().slice(0, 4)}`;
+  const slug = `${toSlug(clean.name).slice(0, 28) || "app"}-${crypto.randomUUID().slice(0, 4)}`;
   await supabase.from("projects").update({ plan: clean, name: clean.name, slug, updated_at: touch() }).eq("id", id);
   const later = clean.scope.filter((s) => s.status === "later").length;
   const reply = await say(supabase, id, {
@@ -106,26 +107,13 @@ export async function generateUI(id: string) {
   return { plan: next, live: results.every((r) => r === null || r.live) };
 }
 
+/** End of the scripted build (agent projects, or no sandbox): template code from lib/script/files.ts. */
 export async function finishBuild(id: string, seconds?: number) {
   const { supabase, project } = await load(id);
   if (!project.plan) throw new Error("No plan");
-  const framework = (project.source as { framework?: string } | null)?.framework ?? "lyzr";
-  const stack = toStack(project.source?.stack);
-  const files = filesFor(project.plan, framework, stack);
-  await supabase.from("files").upsert(files.map((f) => ({ project_id: id, path: f.path, content: f.content, updated_at: touch() })), { onConflict: "project_id,path" });
-  const { count } = await supabase.from("agents").select("id", { count: "exact", head: true }).eq("project_id", id);
-  if (!count)
-    await supabase.from("agents").insert(project.plan.agents.map((a) => ({
-      project_id: id, name: a.name, role: a.role, framework, tools: a.tools, model: stack.model, evals: (project.plan?.tests ?? []).map((t) => ({ input: t.input, expect: t.expect })),
-      instructions: `${a.role}. Ground every answer in the provided data; say what's missing instead of guessing. Never send or post anything without the user's approval.`,
-    })));
-  await supabase.from("versions").insert({ project_id: id, label: "First build", snapshot: { files, plan: project.plan, summary: `Built ${project.plan.screens.length} screens and ${project.plan.agents.length} agent${project.plan.agents.length > 1 ? "s" : ""}.` } });
-  await seedExampleRows(id).catch(() => {}); // example rows for the Data tab (skipped if migration 0005 isn't applied)
-  const source = { ...(project.source ?? {}), build: { seconds: Math.round(seconds ?? 0), at: touch() } };
-  await supabase.from("projects").update({ stage: "test", source, updated_at: touch() }).eq("id", id);
-  const message = await say(supabase, id, { role: "assistant", kind: "text", content: `Build finished. ${files.length} files, ${project.plan.agents.length} agent${project.plan.agents.length > 1 ? "s" : ""}${project.plan.screens.length ? ", 1 issue fixed for free" : ""}. Next, I'll test it.` });
-  const { data: agents } = await supabase.from("agents").select("*").eq("project_id", id).order("created_at");
-  return { files, agents: agents ?? [], message };
+  const files = filesFor(project.plan, project.source?.framework ?? "lyzr", toStack(project.source?.stack));
+  const r = await completeBuild(supabase, project, files, seconds ?? 0);
+  return { files: r.files, agents: r.agents, message: r.message as Msg };
 }
 
 export async function saveFile(id: string, path: string, content: string) {
@@ -158,18 +146,24 @@ export async function revertTo(id: string, versionId: string) {
   return { files, plan: snap.plan ?? null };
 }
 
-export async function deploy(id: string, target: "preview" | "production") {
-  const { supabase } = await load(id);
-  await snapshot(id, target === "production" ? "Published to production" : "Preview deployment");
-  if (target === "production") await supabase.from("projects").update({ stage: "live", updated_at: touch() }).eq("id", id);
-  return say(supabase, id, { role: "assistant", kind: "text", content: target === "production" ? "🎉 You're live. Share the link, or keep chatting to improve it — every change ships as a new version you can roll back." : "Preview deployed. Share it with teammates for feedback before going to production." });
+/** Publish to production. The scan runs here too, not just in the UI, so calling this directly can't skip it. */
+export async function deploy(id: string, shipAnyway = false) {
+  const { supabase, project } = await load(id);
+  const high = (await securityScan(id)).filter((f) => f.severity === "high");
+  if (high.length && !shipAnyway) return { error: `Fix the ${high.length === 1 ? "high-severity issue" : `${high.length} high-severity issues`} first, or choose “ship anyway”.` };
+  const version = await saveVersion(supabase, id, project.plan, "Published to production", high.length ? { shippedWith: high.map((f) => f.id) } : {});
+  await supabase.from("projects").update({ stage: "live", updated_at: touch() }).eq("id", id);
+  const message = await say(supabase, id, { role: "assistant", kind: "text", content: "🎉 You're live. Share the link, or keep chatting to improve it — every change ships as a new version you can roll back." });
+  return { message, version };
 }
 
 /** Real post-build change: the model edits the app's screens, we regenerate their code and save a version with a plain summary. */
 export async function quickChange(id: string, text: string) {
-  const { supabase, project } = await load(id);
+  const { supabase, project, profile } = await load(id);
   if (!project.plan) throw new Error("No plan");
   const userMsg = await say(supabase, id, { role: "user", kind: "text", content: text });
+  const broke = await outOfCredits(supabase, profile?.bonus_credits);
+  if (broke) return { messages: [userMsg, await say(supabase, id, { role: "assistant", kind: "text", content: broke })], plan: project.plan, files: null, version: null };
   const r = await changeApp(project.plan, text);
   await logUsage(supabase, id, "change", r.usage);
   if (r.live && r.clarify.needed && r.clarify.options.length) {

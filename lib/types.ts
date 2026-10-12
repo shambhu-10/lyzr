@@ -11,6 +11,9 @@ export const STAGES: { id: Exclude<Stage, "live">; label: string }[] = [
   { id: "ship", label: "Ship" },
 ];
 
+/** A test-step result. Scripted builds use lib/script/build.ts testChecks; real builds store the checks that ran. */
+export type Check = { label: string; dev: string; ok: boolean | "warn"; fix?: string };
+
 export type Question = { id: string; text: string; why?: string; multi: boolean; options: { label: string; hint?: string }[] };
 
 export type Block = {
@@ -63,17 +66,7 @@ export type Project = {
   plan: Plan | null;
   connections: Record<string, "connected" | "sample">;
   demo_data: boolean;
-  source: { repo?: string; language?: string; stack?: Stack; framework?: string; template?: boolean; remixed_from?: string; lens?: Mode; autoKind?: boolean; theme?: AppTheme; build?: { seconds: number; at: string } } | null;
+  source: { repo?: string; language?: string; stack?: Stack; framework?: string; template?: boolean; remixed_from?: string; lens?: Mode; autoKind?: boolean; theme?: AppTheme; build?: { seconds: number; at: string; checks?: Check[] }; preview?: { sandbox: string; url: string }; github?: { repo: string; url: string; branch: string; commit?: string; pushedAt?: string } } | null;
   created_at: string;
   updated_at: string;
-};
-
-export type Profile = {
-  id: string;
-  full_name: string | null;
-  org_name: string | null;
-  role: string | null;
-  default_mode: Mode;
-  onboarded: boolean;
-  bonus_credits?: number;
 };

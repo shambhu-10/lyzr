@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 
 /** Placeholder that types out example ideas, then erases them — only while `active` (box empty and unfocused). */
-export function useTypedPlaceholder(examples: readonly string[], active: boolean, fallback: string) {
+export function useTypedPlaceholder(examples: readonly string[], active: boolean, fallback = "Describe the app or agent you want to build…") {
   const [text, setText] = useState(fallback);
   useEffect(() => {
     if (!active || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;

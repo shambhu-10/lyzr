@@ -12,12 +12,11 @@ const EXAMPLES = [
   "A LangGraph research agent that writes cited reports",
   "A lead scorer that reads new HubSpot deals and alerts the owner",
 ];
-const STATIC = "Describe the app or agent you want to build…";
 
 export function HeroPrompt() {
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
-  const placeholder = useTypedPlaceholder(EXAMPLES, !value && !focused, STATIC);
+  const placeholder = useTypedPlaceholder(EXAMPLES, !value && !focused);
   const router = useRouter();
   const go = () => {
     if (value.trim()) savePendingPrompt(value.trim());

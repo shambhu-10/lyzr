@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { GithubIcon } from "@/components/icons";
-import { createClient } from "@/lib/supabase/client";
+import { connectGitHub } from "@/lib/supabase/client";
 import { importRepo, listRepos, type Repo } from "@/lib/actions/import";
 import { FRAMEWORKS } from "@/lib/catalog";
 import { timeAgo } from "@/components/projects/project-card";
@@ -23,14 +23,7 @@ export function Importer() {
 
   useEffect(() => { listRepos().then(setRepos); }, []);
 
-  const connect = async () => {
-    const sb = createClient();
-    const { error } = await sb.auth.linkIdentity({ provider: "github", options: { redirectTo: `${location.origin}/auth/callback?next=/import`, scopes: "read:user" } });
-    if (error) {
-      // Already-linked accounts just need a fresh token: re-auth with GitHub.
-      await sb.auth.signInWithOAuth({ provider: "github", options: { redirectTo: `${location.origin}/auth/callback?next=/import`, scopes: "read:user" } });
-    }
-  };
+  const connect = () => connectGitHub("/import");
 
   const analyze = async (r: Repo) => {
     setPick(r);

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CreditCard, LogOut, Settings } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { signOut } from "@/lib/supabase/client";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 /** Profile avatar (top right): who you are, settings, billing, sign out. */
@@ -23,7 +23,7 @@ export function UserMenu({ name, email }: { name: string; email: string }) {
         <DropdownMenuItem asChild><Link href="/settings"><Settings /> Settings</Link></DropdownMenuItem>
         <DropdownMenuItem asChild><Link href="/usage"><CreditCard /> Usage &amp; billing</Link></DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={async () => { await createClient().auth.signOut(); router.push("/"); router.refresh(); }}>
+        <DropdownMenuItem onClick={async () => { await signOut(); router.push("/"); router.refresh(); }}>
           <LogOut /> Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
