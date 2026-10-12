@@ -2,6 +2,8 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { requireUser } from "@/lib/supabase/server";
+import { mySpend } from "@/lib/usage-log";
+import { balance, spentOn } from "@/lib/usage";
 
 export async function updateProfile(form: FormData) {
   const { supabase, user } = await requireUser();
@@ -19,6 +21,13 @@ export async function clearProviderTokens() {
   const jar = await cookies();
   jar.delete("gh_token");
   jar.delete("gcal_token");
+}
+
+/** Metered balance + one project's spend, for the workspace header after each AI step. */
+export async function myCredits(projectId: string) {
+  const { supabase, profile } = await requireUser();
+  const spend = await mySpend(supabase);
+  return { left: balance(spentOn(spend), profile?.bonus_credits), project: spentOn(spend, projectId) };
 }
 
 export async function setDefaultMode(mode: "builder" | "developer") {

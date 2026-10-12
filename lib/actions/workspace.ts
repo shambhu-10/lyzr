@@ -5,7 +5,7 @@ import { seedExampleRows } from "@/lib/actions/app-data";
 import { providedEnv, sanitizeTech } from "@/lib/tech-spec";
 import { llmEnabled } from "@/lib/ai/llm";
 import { filesFor } from "@/lib/script/files";
-import { logUsage } from "@/lib/usage-log";
+import { logUsage, outOfCredits } from "@/lib/usage-log";
 import { diffStats } from "@/lib/diff";
 import { estimate } from "@/lib/ai/estimate";
 import type { Plan, Project, Stage } from "@/lib/types";
@@ -172,9 +172,11 @@ export async function deploy(id: string, shipAnyway = false) {
 
 /** Real post-build change: the model edits the app's screens, we regenerate their code and save a version with a plain summary. */
 export async function quickChange(id: string, text: string) {
-  const { supabase, project } = await load(id);
+  const { supabase, project, profile } = await load(id);
   if (!project.plan) throw new Error("No plan");
   const userMsg = await say(supabase, id, { role: "user", kind: "text", content: text });
+  const broke = await outOfCredits(supabase, profile?.bonus_credits);
+  if (broke) return { messages: [userMsg, await say(supabase, id, { role: "assistant", kind: "text", content: broke })], plan: project.plan, files: null, version: null };
   const r = await changeApp(project.plan, text);
   await logUsage(supabase, id, "change", r.usage);
   if (r.live && r.clarify.needed && r.clarify.options.length) {

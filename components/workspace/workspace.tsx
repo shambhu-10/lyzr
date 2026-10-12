@@ -25,7 +25,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { buildSteps, testChecks } from "@/lib/script/build";
 import { filesFor } from "@/lib/script/files";
 import { toStack } from "@/lib/catalog";
-import { projectSpend, STARTING_CREDITS } from "@/lib/usage";
+import { myCredits } from "@/lib/actions/profile";
 import type { AgentRow, FileRow, VersionRow } from "@/lib/workspace-types";
 import type { Mode, Plan, Project, Stage } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -54,18 +54,20 @@ function notifyDone(name: string) {
   try { if (document.hidden && "Notification" in window && Notification.permission === "granted") new Notification(`${name} is built`, { body: "Your app passed its build. Come back to test and ship it." }); } catch {}
 }
 
-export function Workspace({ initial, defaultMode, otherSpend, workspaceConnections = [], role = "owner", ownerName = "", bonus = 0 }: {
+export function Workspace({ initial, defaultMode, credits: initialCredits, workspaceConnections = [], role = "owner", ownerName = "" }: {
   initial: { project: Project; messages: Msg[]; files: FileRow[]; agents: AgentRow[]; versions: VersionRow[]; comments: Comment[] };
   defaultMode: Mode;
-  otherSpend: number;
+  credits: { left: number; project: number }; // metered: what's left overall, and what this project has used
   workspaceConnections?: string[];
   role?: "owner" | "editor" | "viewer";
   ownerName?: string;
-  bonus?: number;
 }) {
   const viewer = role === "viewer";
   const [project, setProject] = useState(initial.project);
   const [messages, setMessages] = useState(initial.messages);
+  const [spend, setSpend] = useState(initialCredits);
+  // Every AI step ends with a message, so re-read the metered balance when one arrives.
+  useEffect(() => { if (messages.length > initial.messages.length) myCredits(initial.project.id).then(setSpend).catch(() => {}); }, [messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [files, setFiles] = useState(initial.files);
   const [agents, setAgents] = useState(initial.agents);
   const [versions, setVersions] = useState(initial.versions);
@@ -275,7 +277,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
 
   const codeChat = tab === "code" && mode === "developer" && reached >= ORDER.indexOf("test");
   const placeholder = codeChat ? `Ask about ${openFile || "this file"} or ask for a change…` : !plan ? "Or describe anything else you want…" : project.stage === "plan" ? "Ask for changes to the plan…" : planFirst ? "Describe a change — I'll update the plan first…" : "Ask for a change, e.g. “add a search box to the inbox”…";
-  const credits = Math.max(0, STARTING_CREDITS + bonus - otherSpend - projectSpend(project));
+  const credits = spend.left;
   const later = plan?.scope.filter((s) => s.status === "later").map((s) => s.item) ?? [];
 
   const stageCard = () => {
@@ -289,7 +291,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
         ...(project.demo_data ? [{ label: "Connect real accounts", onClick: () => setView("connect") }] : []),
       ]} />} /> : <BuildCard steps={steps} at={steps.length} mode={mode} paused={false} onPause={() => {}} remaining={0} />;
     if (view === "test") return <TestCard checks={testChecks(plan, project.demo_data)} mode={mode} onFix={() => setView("connect")} onPlayground={() => { setTab("agents"); if (agents[0]) setDrawer(agents[0]); }} onContinue={() => goStage("ship")} />;
-    if (view === "ship") return project.stage === "live" ? <LiveCard project={project} author={ownerName} later={later} onAddBack={(s) => change(`Add this from the plan's "later" list: ${s}`)} /> : <ShipCard project={project} mode={mode} onDeploy={onDeploy} onFixConnections={() => setView("connect")} onFileChanged={(p, c) => { setFiles((fs) => fs.map((f) => (f.path === p ? { ...f, content: c } : f))); setCodeKey((k) => k + 1); }} />;
+    if (view === "ship") return project.stage === "live" ? <LiveCard project={project} spent={spend.project} author={ownerName} later={later} onAddBack={(s) => change(`Add this from the plan's "later" list: ${s}`)} /> : <ShipCard project={project} mode={mode} onDeploy={onDeploy} onFixConnections={() => setView("connect")} onFileChanged={(p, c) => { setFiles((fs) => fs.map((f) => (f.path === p ? { ...f, content: c } : f))); setCodeKey((k) => k + 1); }} />;
     return null;
   };
 
@@ -341,7 +343,7 @@ export function Workspace({ initial, defaultMode, otherSpend, workspaceConnectio
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto bg-muted/30">
             {tab === "plan" && <PlanPanel plan={plan} mode={mode} framework={framework} busy={!!busy} canApprove={project.stage === "plan"} canEdit={!viewer && (project.stage === "plan" || project.stage === "connect")}
-              actual={reached >= ORDER.indexOf("test") ? { spent: projectSpend(project), seconds: source.build?.seconds } : undefined}
+              actual={reached >= ORDER.indexOf("test") ? { spent: spend.project, seconds: source.build?.seconds } : undefined}
               projectId={project.id} stack={stack} onPlan={(p) => patch({ plan: p })}
               onStack={async (st, fw) => {
                 const r = await setStack(project.id, st, fw).catch(() => ({ error: "Couldn't change the stack." }));

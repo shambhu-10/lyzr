@@ -17,7 +17,6 @@ import { integrationById, type Integration } from "@/lib/integrations";
 import type { BuildStep, Check as TestCheck } from "@/lib/script/build";
 import type { Mode, Plan, Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { projectSpend } from "@/lib/usage";
 import { useOrigin } from "@/hooks/use-origin";
 
 function Card({ title, icon, children, tone }: { title: string; icon: React.ReactNode; children: React.ReactNode; tone?: "dev" }) {
@@ -287,7 +286,7 @@ export function ShipCard({ project, mode, onDeploy, onFixConnections, onFileChan
 
 /* ---------------- Live ---------------- */
 
-export function LiveCard({ project, later, onAddBack, author }: { project: Project; later: string[]; onAddBack: (s: string) => void; author: string }) {
+export function LiveCard({ project, spent, later, onAddBack, author }: { project: Project; spent: number; later: string[]; onAddBack: (s: string) => void; author: string }) {
   const url = `${useOrigin()}/live/${project.slug}`;
   const [inGallery, setInGallery] = useState(!!project.showcase);
   const [shownAs, setShownAs] = useState(project.showcase_author ?? author);
@@ -306,7 +305,7 @@ export function LiveCard({ project, later, onAddBack, author }: { project: Proje
       <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
         <div className="rounded-lg bg-muted p-2"><div className="text-base font-semibold">{project.views ?? 0}</div>views</div>
         <div className="rounded-lg bg-muted p-2"><div className="text-base font-semibold">{project.remixes ?? 0}</div>remixes</div>
-        <div className="rounded-lg bg-muted p-2"><div className="text-base font-semibold">${projectSpend(project).toFixed(2)}</div>total spent</div>
+        <div className="rounded-lg bg-muted p-2"><div className="text-base font-semibold">${spent.toFixed(2)}</div>total spent</div>
       </div>
       <div className="mt-3 rounded-lg border p-2.5">
         <label className="flex items-center justify-between gap-3 text-sm"><span><span className="block font-medium">Show in community gallery</span><span className="text-xs text-muted-foreground">Others can try it and remix a copy. Your data and accounts are never shared.</span></span>

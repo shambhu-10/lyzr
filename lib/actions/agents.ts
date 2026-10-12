@@ -3,14 +3,16 @@ import { revalidatePath } from "next/cache";
 import { createClient, requireUser } from "@/lib/supabase/server";
 import { agentReply, runAgentTask, runEval, type Turn } from "@/lib/ai/agent-chat";
 import { sampleContext } from "@/lib/sample-data";
-import { logUsage } from "@/lib/usage-log";
+import { logUsage, outOfCredits } from "@/lib/usage-log";
 import type { Plan } from "@/lib/types";
 import { toStack } from "@/lib/catalog";
 
 export type EvalCase = { input: string; expect: string; pass?: boolean; reason?: string; output?: string };
 
 export async function chatWithAgent(agentId: string, history: Turn[]) {
-  const { supabase } = await requireUser();
+  const { supabase, profile } = await requireUser();
+  const broke = await outOfCredits(supabase, profile?.bonus_credits);
+  if (broke) return { text: broke, live: false, ms: 0, tokens: 0 };
   const { data: agent } = await supabase.from("agents").select("name, instructions, model, project_id, projects(prompt)").eq("id", agentId).single();
   if (!agent) throw new Error("Agent not found");
   const prompt = (agent.projects as unknown as { prompt?: string } | null)?.prompt ?? "";
@@ -44,7 +46,9 @@ export async function runBlockAgent(input: { projectId?: string; slug?: string; 
 }
 
 export async function runEvals(agentId: string, cases: EvalCase[]) {
-  const { supabase } = await requireUser();
+  const { supabase, profile } = await requireUser();
+  const broke = await outOfCredits(supabase, profile?.bonus_credits);
+  if (broke) throw new Error(broke);
   const { data: agent } = await supabase.from("agents").select("name, instructions, model, project_id, projects(prompt)").eq("id", agentId).single();
   if (!agent) throw new Error("Agent not found");
   const sample = sampleContext((agent.projects as unknown as { prompt?: string } | null)?.prompt ?? "");

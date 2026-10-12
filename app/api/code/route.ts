@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { codeChat, complete, editSelection } from "@/lib/ai/code";
-import { logUsage } from "@/lib/usage-log";
+import { logUsage, outOfCredits } from "@/lib/usage-log";
 
 type Body =
   | { op: "complete"; projectId: string; path: string; prefix: string; suffix: string }
@@ -15,6 +15,9 @@ export async function POST(req: Request) {
   const body = (await req.json()) as Body;
   const { data: project } = await supabase.from("projects").select("id").eq("id", body.projectId).single(); // RLS: only the owner's project
   if (!project) return Response.json({ error: "Project not found" }, { status: 404 });
+  const { data: profile } = await supabase.from("profiles").select("bonus_credits").eq("id", user.id).single();
+  const broke = await outOfCredits(supabase, profile?.bonus_credits);
+  if (broke) return body.op === "complete" ? Response.json({ text: "" }) : Response.json({ error: broke }, { status: 402 });
 
   if (body.op === "complete") {
     const r = await complete(body.path, String(body.prefix).slice(-6000), String(body.suffix).slice(0, 2000));

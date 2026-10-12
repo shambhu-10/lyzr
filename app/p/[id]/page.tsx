@@ -7,7 +7,8 @@ import type { Msg } from "@/lib/actions/workspace";
 import type { Project } from "@/lib/types";
 import type { VersionRow } from "@/lib/workspace-types";
 import type { Comment } from "@/lib/actions/comments";
-import { projectSpend } from "@/lib/usage";
+import { balance, spentOn } from "@/lib/usage";
+import { mySpend } from "@/lib/usage-log";
 
 export default async function ProjectPage({ params }: PageProps<"/p/[id]">) {
   const { id } = await params;
@@ -20,7 +21,7 @@ export default async function ProjectPage({ params }: PageProps<"/p/[id]">) {
     supabase.from("versions").select("id, label, created_at, summary:snapshot->>summary, changes:snapshot->changes, diff:snapshot->diff").eq("project_id", id).order("created_at", { ascending: false }),
   ]);
   const { data: comments } = await supabase.from("comments").select("*").eq("project_id", id).order("created_at");
-  const { data: others } = await supabase.from("projects").select("stage, plan").neq("id", id).eq("owner_id", user.id);
+  const spend = await mySpend(supabase);
   if (!project) notFound();
   // Owner, or a teammate via an invite (RLS already limits what they can read and write).
   const { data: member } = project.owner_id === user.id ? { data: null } : await supabase.from("project_members").select("role").eq("project_id", id).eq("user_id", user.id).maybeSingle();
@@ -33,10 +34,9 @@ export default async function ProjectPage({ params }: PageProps<"/p/[id]">) {
       initial={{ project: project as Project, messages: (messages ?? []) as Msg[], files: files ?? [], agents: agents ?? [], versions: (versions ?? []) as VersionRow[], comments: (comments ?? []) as Comment[] }}
       defaultMode={profile?.default_mode ?? "builder"}
       workspaceConnections={Object.keys(profile?.connections ?? {})}
-      otherSpend={(others ?? []).reduce((a, p) => a + projectSpend(p), 0)}
+      credits={{ left: balance(spentOn(spend), profile?.bonus_credits), project: spentOn(spend, id) }}
       role={role}
       ownerName={(profile?.full_name ?? "").split(" ")[0]}
-      bonus={Number(profile?.bonus_credits ?? 0)}
     />
     </>
   );
