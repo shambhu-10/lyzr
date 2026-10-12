@@ -1,7 +1,7 @@
 "use server";
 import { requireUser } from "@/lib/supabase/server";
 import { GatewayError, generate, type ChatMessage } from "@/lib/ai/gateway";
-import { MAX_STEPS, TOOLS, compact, runTool, scaffold, systemPrompt, type BuildEvent, type StepState } from "@/lib/ai/builder";
+import { MAX_STEPS, TOOLS, compact, noToolCalls, runTool, scaffold, systemPrompt, type BuildEvent, type StepState } from "@/lib/ai/builder";
 import { APP_DIR, createSandbox, getSandbox, listFiles, readFile, run, sandboxesEnabled, startPreview, writeFiles } from "@/lib/sandbox";
 import { logUsage, outOfCredits } from "@/lib/usage-log";
 import { completeBuild } from "@/lib/complete-build";
@@ -77,7 +77,7 @@ export async function buildStep(runId: string): Promise<StepResult | { error: st
       const out = await runTool(sb, call, state, events).catch((e) => `Tool failed: ${e instanceof Error ? e.message : e}`);
       state.history.push({ role: "tool", toolCallId: call.id, content: out });
     }
-    if (!res.toolCalls.length) state.history.push({ role: "user", content: "Use the tools: write the files, run_build, then finish." });
+    if (!res.toolCalls.length) noToolCalls(state, res.text);
   } catch (e) {
     events.push({ t: "error", text: e instanceof GatewayError ? e.message : "The AI step failed — retrying." }); // transient: the next step tries again
   }

@@ -116,7 +116,7 @@ Project (Vite + React 19, plain JavaScript, already installed). Fixed files: ind
 - Keep each file under 120 lines.
 
 How to work:
-1. Write the files with write_file — at most 3 files per turn.
+1. Write the files with write_file — at most 3 files per turn, each file once (rewrite only to fix a build error).
 2. Call run_build. If it fails, read the error, fix the file, run_build again.
 3. When the build passes, call finish with one sentence describing the app.`;
 }
@@ -156,7 +156,7 @@ export async function runTool(sb: Sandbox, call: ToolCall, state: StepState, eve
     case "run_build": {
       const r = await build(sb, events);
       state.dirty = !r.ok;
-      return r.ok ? "Build passed." : `Build failed:\n${r.output}`;
+      return r.ok ? "Build passed. If everything asked for is in place, call finish now." : `Build failed:\n${r.output}`;
     }
     case "finish": {
       if (state.dirty) { // never trust "done" — verify
@@ -176,6 +176,15 @@ async function build(sb: Sandbox, events: BuildEvent[]) {
   const r = await run(sb, "npm", ["run", "build"], 2500);
   events.push({ t: "build", ok: r.ok, tail: r.output.split("\n").filter(Boolean).slice(-6).join("\n") });
   return r;
+}
+
+/**
+ * The model replied without calling a tool. Standard loop rule: no tool call = it thinks it's done.
+ * Accept that only if the code builds; otherwise nudge it back to work.
+ */
+export function noToolCalls(state: StepState, text: string) {
+  if (!state.dirty) state.done = text.trim().split("\n")[0].slice(0, 300) || "Built the app.";
+  else state.history.push({ role: "user", content: "The code hasn't passed a build yet. Use the tools: fix the files, run_build, then finish." });
 }
 
 /** Keep only what the next step needs: old file contents become a one-liner, old build logs get short. */
