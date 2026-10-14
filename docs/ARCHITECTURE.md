@@ -4,7 +4,7 @@ How Architect 2.0 would run as a production product: every service, why I picked
 
 ![Architect 2.0 production architecture](./architecture.svg)
 
-*Same diagram as a PNG: [architecture.png](./architecture.png). Numbers on the arrows follow [the flow below](#2-the-flow-from-prompt-to-live-app).*
+*Same diagram as a PNG: [architecture.png](./architecture.png). Numbers on the arrows follow [the flow below](#2-the-flow-from-prompt-to-live-app). For what this repo runs today, see [section 6](#6-what-this-repository-implements-today).*
 
 ---
 
@@ -297,6 +297,10 @@ Input tokens   130 × ~20k tokens               ≈ 2.6M tokens/s ≈ 160M token
 ---
 
 ## 6. What this repository implements today
+
+![What this repo runs today](./architecture-current.svg)
+
+*Each box is tagged **Real**, **Partly** or **Demo**. PNG: [architecture-current.png](./architecture-current.png).*
 
 The repo (Next.js 16 on Vercel, Supabase, Vercel Sandbox) implements the core of this design in a smaller form. The real build agent was measured on a 2–3 screen app: **~60–75 s, ~15k tokens, about $0.003 of model cost**. A follow-up change (adding a search box) took **~30 s** in the same sandbox.
 

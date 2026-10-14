@@ -91,15 +91,9 @@ Without an AI key, the AI steps switch to scripted answers; without sandboxes, B
 
 ![Architect 2.0 production architecture](docs/architecture.svg)
 
-What this repo runs today:
+What this repo runs today (each box tagged Real / Partly / Demo; [PNG](docs/architecture-current.png)):
 
-```
-Browser ──REST/server actions──▶ Next.js on Vercel ──▶ Supabase (Postgres + RLS: projects, versions, usage ledger, build_runs)
-   │                                   │
-   │ iframe (running app)              ├─▶ Model gateway (lib/ai/gateway.ts) ─▶ Groq · Claude · OpenAI · Gemini
-   └──────────────▶ Vercel Sandbox ◀───┘   build agent (lib/ai/builder.ts): write_file · read_file · list_files · run_build · finish
-                    microVM: Vite + React, dev server on :3000
-```
+![What this repo runs today](docs/architecture-current.svg)
 
 A real build: **Approve the plan → `startRealBuild`** creates a sandbox, writes the scaffold (themed UI kit + app shell) and installs dependencies → the browser calls **`buildStep`** repeatedly; each step is one model call plus its tool calls, with the job state in `build_runs` (so a reload resumes it) → **`finish`** re-runs the build, starts the dev server, saves the real files, a version and the checks that ran → Test → Ship.
 
