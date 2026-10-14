@@ -87,6 +87,12 @@ Without an AI key, the AI steps switch to scripted answers; without sandboxes, B
 
 ## How it works
 
+**Production architecture:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) covers every service, why it was chosen, the prompt-to-live flow, and how this repo maps to it. Diagram: [docs/architecture.svg](docs/architecture.svg) ([PNG](docs/architecture.png)).
+
+![Architect 2.0 production architecture](docs/architecture.svg)
+
+What this repo runs today:
+
 ```
 Browser ──REST/server actions──▶ Next.js on Vercel ──▶ Supabase (Postgres + RLS: projects, versions, usage ledger, build_runs)
    │                                   │
